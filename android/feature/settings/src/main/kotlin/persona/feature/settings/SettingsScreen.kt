@@ -697,7 +697,7 @@ fun ReadinessScreen(
         }
         onDone()
     }
-    JListPage(title = stringResource(if (notificationsOnly) R.string.settings_ready_notifications else R.string.settings_ready_title), onBack = onBack, largeTitle = showTitle && onBack == null) {
+    JListPage(title = stringResource(if (notificationsOnly) R.string.settings_ready_notifications else R.string.settings_ready_title), onBack = onBack, largeTitle = showTitle && onBack == null, scrollUnderBottom = notificationsOnly) {
         header()
         val mainSteps = main?.takeIf { readinessOn && !notificationsOnly }
         if (mainSteps != null) {
