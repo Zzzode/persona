@@ -127,7 +127,6 @@ private fun PersonaRootContent(
     val session by shell.session.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     val scope = rememberCoroutineScope()
-    var diagnostics by remember { mutableStateOf(false) }
     // First pairing keeps the pairing flow, including its readiness checklist, until it reports ready.
     var entering by remember { mutableStateOf(hub == null) }
     LaunchedEffect(hub, session) {
@@ -152,6 +151,7 @@ private fun PersonaRootContent(
             Box(Modifier.fillMaxSize()) {
                 val active = session
                 if (link != null || active == null && hub == null || entering && !shell.automation) {
+                    var diagnostics by remember { mutableStateOf(false) }
                     val router = remember { Router() }
                     LaunchedEffect(openNavigation.value, active) {
                         openNavigation.value?.invoke(router)?.let { route ->
@@ -159,12 +159,9 @@ private fun PersonaRootContent(
                             if (route.key == PairingRoute || route.key is SettingsPageRoute) openNavigation.value = null
                         }
                     }
-                    BackHandler(diagnostics || link != null && hub != null) {
-                        if (diagnostics) diagnostics = false else MainActivity.pendingPairLink.value = null
-                    }
-                    if (diagnostics) SettingsScreen(services, initialPage = "diag")
-                    // The pairing page scrolls by itself; the demo entry sits in its footer.
-                    else PairingScreen(services.pairing, services.sessions, initialLink = link,
+                    BackHandler(link != null && hub != null) { MainActivity.pendingPairLink.value = null }
+                    // Keep the pairing state in memory while diagnostics is open.
+                    PairingScreen(services.pairing, services.sessions, initialLink = link,
                         onReady = { MainActivity.pendingPairLink.value = null; entering = false; onPaired() },
                         onDiagnostics = { diagnostics = true }, diagnostics = services.diagnostics,
                         onCredentialsSaved = { MainActivity.pendingPairLink.value = null }, machines = services.machines,
@@ -178,6 +175,10 @@ private fun PersonaRootContent(
                                 }
                             } })
                         })
+                    if (diagnostics) {
+                        val close = { diagnostics = false }
+                        JFullScreen(onDismiss = close) { SettingsScreen(services, initialPage = "diag", onBack = close) }
+                    }
                 } else if (active == null) {
                     // The pairing is restored; its repositories are still being assembled.
                     Box(Modifier.fillMaxSize().background(PersonaTheme.palette.background), contentAlignment = Alignment.Center) { JLoading() }
