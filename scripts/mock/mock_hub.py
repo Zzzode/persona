@@ -1118,7 +1118,10 @@ if os.environ.get("MOCK_PASEO"):
                    slot_index=None, pane_id=None, tab_id=None, workspace_id=None, host="paseo",
                    source_kind="runtime", source_instance_id="paseo", repo_root=_paseo_root, worktree=cwd, workspace_cwd=cwd,
                    branch=branch, launcher="claude" if agent == "claude" else "codex", started_by_persona=False,
-                   capabilities={"read": True, "send": True, "interrupt": True, "approve": True, "terminal": False, "attach": False})
+                   # Paseo declares rename and close: the node lists both, rename not on an agent another one started (#6294),
+                   # one that waits for the user included (listed without its parent meanwhile)
+                   capabilities={"read": True, "send": True, "interrupt": True, "approve": True, "terminal": False, "attach": False,
+                                 "close": True, "rename": not (kw.get("is_subagent") or kw.get("asking_parent_session_id"))})
         row.update(kw)
         return sess("server", sid, title, cwd, status, state, "", 0, "", 0, minutes, last, agent=agent, **row)
     SESSIONS += [
@@ -9425,6 +9428,7 @@ def cell_width(ch):
 # workspaces, tabs and panes of the machines (agents of the mock sessions and plain shells, GET /api/v1/machines/{mid}/panes);
 # POST there opens a new shell tab. A terminal addressed "pane:<id>" is a made-up shell, not the Claude screen.
 # MOCK_PANES_DELAY=<seconds>: GET .../panes answers that late (the Terminals page's "hasn't answered yet" with Retry, #6153).
+# MOCK_PANES_NO_WORKSPACE=1: the engine runs and opens tabs but has no workspace yet, until a "New Terminal" opens one.
 PANES_NEW = {}  # machine id -> [(workspace id, pane)] opened by POST
 # The menu actions (close / split / rename / run an agent / git), recorded at GET /mock/node_actions and applied to the
 # layout above: a closed pane or tab is gone, a renamed tab has its new name, a split adds a shell, an agent run in a
@@ -9441,6 +9445,8 @@ def mock_panes(mid):
     sessions = [s for s in SESSIONS if s.get("machine_id") == mid and s.get("pane_id")][:2]
     if mid == "studio":
         return {"hosts": []}
+    if os.environ.get("MOCK_PANES_NO_WORKSPACE") and not PANES_NEW.get(mid):
+        return {"hosts": [{"kind": "herdr", "stream": True, "control": True, "new_tab": True, "workspaces": [], "tabs": [], "panes": []}]}
     ws = [{"id": "w1", "label": "persona", "number": 1, "cwd": "/home/me/persona", "branch": "main"},
           {"id": "w2", "label": "notes", "number": 2, "cwd": "/home/me/notes"}]
     tabs = [{"id": "w1:t1", "workspace_id": "w1", "label": "agent-1", "number": 1},
