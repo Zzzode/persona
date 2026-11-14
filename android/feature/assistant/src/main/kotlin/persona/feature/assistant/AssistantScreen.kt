@@ -326,7 +326,7 @@ fun AssistantScreen(
     // The hub checks the assistant's default model and computer. An existing chat can use a different one.
     val modelProblem = blocking?.takeIf {
         onMain && it.id == ReadinessStep.MODEL && managers.offline == null && mainSession?.modelPick == null &&
-            (readiness?.machine?.id?.takeIf(String::isNotBlank)?.let { id -> id == active?.machineId } != false)
+            readiness?.machine?.id?.takeIf(String::isNotBlank)?.let { id -> id == active?.machineId } == true
     }
     val mainChatGuidance: (@Composable () -> Unit)? = modelProblem?.let { step ->
         {

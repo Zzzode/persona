@@ -152,6 +152,18 @@ class AssistantReadinessShotsTest {
         rule.onNodeWithText("助手还没接上模型").assertExists()
 
         rule.runOnIdle {
+            hub.readiness = notLoggedIn.copy(machine = null)
+            hub.assistant.value = snapshot
+        }
+        rule.onNodeWithText("接上模型").assertDoesNotExist()
+
+        rule.runOnIdle {
+            hub.readiness = notLoggedIn.copy(machine = ReadinessMachine(" ", "工作电脑"))
+            hub.assistant.value = snapshot.copy(conversations = listOf(session.copy(turnErrorCode = "not_logged_in")))
+        }
+        rule.onNodeWithText("接上模型").assertDoesNotExist()
+
+        rule.runOnIdle {
             hub.readiness = AssistantReadiness()
             hub.assistant.value = snapshot
         }
