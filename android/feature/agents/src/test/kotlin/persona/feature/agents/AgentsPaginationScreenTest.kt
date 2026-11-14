@@ -106,6 +106,45 @@ class AgentsPaginationScreenTest {
         println("8000 synthetic sessions: first page=50, after end scroll=100; LazyColumn offscreen Task 49 not composed")
     }
 
+    @Test fun liveReorderKeepsTheSessionBeingReadAtTheSameHeight() {
+        val repository = PagedRepository(rowCount = 80)
+        val model = model(repository)
+        rule.setContent { PersonaTheme(reduceMotion = true) { AgentsScreen(model, Nowhere, AgentsMetadata()) } }
+        rule.waitUntil(5_000) { model.page.value.loaded }
+
+        val ordered = model.page.value.list.groups.single().rows.map { it.session }
+        val first = ordered[30]
+        val list = rule.onNode(hasScrollToKeyAction())
+        list.performScrollToKey("session:${first.key.path}")
+        val viewport = list.fetchSemanticsNode().boundsInRoot
+        val middle = viewport.top + viewport.height / 2
+        val promoted = (ordered.take(12) + ordered.subList(31, 58)).mapTo(mutableSetOf()) { it.key }
+        val promotedTitles = ordered.filter { it.key in promoted }.mapTo(mutableSetOf()) { it.title }
+        val reader = rule.onAllNodesWithText("Task ", substring = true).fetchSemanticsNodes()
+            .filter { it.boundsInRoot.height > 0 && it.config[SemanticsProperties.Text].any { text -> text.text in promotedTitles } }
+            .minBy { kotlin.math.abs(it.boundsInRoot.center.y - middle) }
+        val title = reader.config[SemanticsProperties.Text].first { it.text in promotedTitles }.text
+        val readingRow = rule.onNodeWithText(title).assertIsDisplayed()
+        val before = reader.boundsInRoot.top
+        assertTrue("the reader is below the beginning of the viewport", before > viewport.top + viewport.height / 4)
+        rule.onNodeWithText(first.title.orEmpty()).assertIsDisplayed()
+
+        // The first visible session stays Working. The reader and its neighbors move well above it when they become Unread.
+        rule.runOnIdle {
+            repository.sessions.value = repository.sessions.value.map { session ->
+                if (session.key in promoted) session.copy(state = "unread", status = "done") else session
+            }
+        }
+        rule.waitUntil(5_000) {
+            model.page.value.list.groups.singleOrNull()?.rows?.take(promoted.size)?.map { it.session.key }?.toSet() == promoted
+        }
+
+        val after = readingRow.assertIsDisplayed()
+            .assert(SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, Status.Unread.label(rule.activity)))
+            .fetchSemanticsNode().boundsInRoot.top
+        assertEquals("the reader stays at the same viewport position after its rank changes", before, after, 2f)
+    }
+
     @Test fun searchPreservesTextAndCaretWhileListProjectionIsPaused() {
         val repository = PagedRepository()
         // Leave the list dispatcher paused while the editor and repository receive input.
