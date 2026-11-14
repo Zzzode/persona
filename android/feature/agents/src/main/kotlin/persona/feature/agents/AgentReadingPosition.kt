@@ -32,7 +32,7 @@ internal fun KeepAgentReadingPosition(
     val hasFooter = rememberUpdatedState(paginationFooter)
     LaunchedEffect(state, scope) {
         var reading: AgentReadingRow? = null
-        var previousRows = emptyList<AgentReadingRow>()
+        var settledRows = emptyList<AgentReadingRow>()
         var lastCorrection: AgentReadingCorrection? = null
         snapshotFlow {
             AgentReadingLayout(state.layoutInfo, state.isScrollInProgress, state.canScrollBackward,
@@ -40,7 +40,7 @@ internal fun KeepAgentReadingPosition(
         }.collect { (layout, scrolling, scrolled, entries, footer) ->
             if (scrolling) {
                 reading = null
-                previousRows = emptyList()
+                settledRows = emptyList()
                 lastCorrection = null
                 return@collect
             }
@@ -49,17 +49,19 @@ internal fun KeepAgentReadingPosition(
             val start = layout.totalItemsCount - entries.size - (if (footer) 1 else 0)
             if (start < 0) return@collect
             val visible = layout.visibleItemsInfo.filter { it.index - start in entries.indices }
-            // The list can still be reporting its previous layout when the new tree is composed.
+            // Keep the last settled geometry until Compose reports a layout that agrees with the new tree.
             if (visible.isEmpty() || visible.any { entries[it.index - start].key != it.key }) return@collect
             val top = layout.viewportStartOffset + layout.beforeContentPadding
             val bottom = layout.viewportEndOffset - layout.afterContentPadding
             val rows = visible.filter { it.offset + it.size > top && it.offset < bottom }
+            // A clipped row at either edge cannot be relied on to restore its position after it moves.
+            val fullyVisible = rows.filter { it.offset >= top && it.offset + it.size <= bottom }
 
             val current = reading
             if (current == null) {
                 if (!scrolled) return@collect
                 val middle = top + (bottom - top) / 2
-                val item = rows.lastOrNull { it.offset <= middle } ?: rows.firstOrNull()
+                val item = fullyVisible.lastOrNull { it.offset <= middle } ?: fullyVisible.firstOrNull()
                 reading = item?.let { AgentReadingRow(it.key, it.offset) }
             } else {
                 var anchor: AgentReadingRow? = current
@@ -67,7 +69,7 @@ internal fun KeepAgentReadingPosition(
                 var index = laidOut?.index ?: entries.indexOfFirst { it.key == current.key }.takeIf { it >= 0 }?.plus(start)
                 if (index == null) {
                     // Keep a surviving neighbor at its position from before the removal, even if it moved offscreen.
-                    val neighbor = previousRows.sortedBy { abs(it.offset - current.offset) }
+                    val neighbor = settledRows.sortedBy { abs(it.offset - current.offset) }
                         .firstNotNullOfOrNull { old ->
                             entries.indexOfFirst { it.key == old.key }.takeIf { it >= 0 }?.let { old to (start + it) }
                         }
@@ -83,13 +85,13 @@ internal fun KeepAgentReadingPosition(
                     if (correction != lastCorrection && !state.isScrollInProgress) {
                         lastCorrection = correction
                         state.requestScrollToItem(index, correction.offset)
-                        return@collect
                     }
-                } else {
-                    lastCorrection = null
+                    // A pending or clamped correction must not overwrite the previous reading positions.
+                    return@collect
                 }
             }
-            previousRows = rows.map { AgentReadingRow(it.key, it.offset) }
+            lastCorrection = null
+            settledRows = fullyVisible.map { AgentReadingRow(it.key, it.offset) }
         }
     }
 }

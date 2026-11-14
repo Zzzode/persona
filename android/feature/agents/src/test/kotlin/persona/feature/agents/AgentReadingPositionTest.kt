@@ -13,6 +13,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.hasScrollToKeyAction
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -42,13 +43,14 @@ class AgentReadingPositionTest {
         val first = initialRows[20]
         val neighbor = initialRows[21]
         val reader = initialRows[22]
-        var rows by mutableStateOf(initialRows)
+        var tree by mutableStateOf(initialRows)
+        var renderedRows by mutableStateOf(initialRows)
         rule.setContent {
             val state = rememberLazyListState()
-            KeepAgentReadingPosition(state, rows, paginationFooter = false, scope = emptyList())
+            KeepAgentReadingPosition(state, tree, paginationFooter = false, scope = emptyList())
             LazyColumn(Modifier.height(276.dp), state = state) {
                 item("header") { Box(Modifier.height(52.dp)) }
-                items(rows, key = { it.key }) { row ->
+                items(renderedRows, key = { it.key }) { row ->
                     Box(Modifier.fillMaxWidth().height(if (row == neighbor) 40.dp else 52.dp).testTag(row.key))
                 }
             }
@@ -64,12 +66,54 @@ class AgentReadingPositionTest {
         val before = closest.fetchSemanticsNode().boundsInRoot.top
 
         // The shorter row above the reader was closer than the row below. Move it beyond the old first key's viewport.
+        val updatedRows = initialRows.filterNot { it == reader || it == neighbor }.toMutableList().apply { add(8, neighbor) }
+        // The new tree can be published while the previous layout is still measured.
+        rule.runOnIdle { tree = updatedRows }
+        oldReader.assertIsDisplayed()
+        assertEquals("the previous layout stays in place until the tree matches", before, closest.fetchSemanticsNode().boundsInRoot.top, 2f)
+        rule.runOnIdle { renderedRows = updatedRows }
+
+        oldReader.assertDoesNotExist()
+        val after = closest.assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
+        assertEquals("the nearest surviving row keeps its old position", before, after, 2f)
+    }
+
+    @Test fun liveRemovalSkipsACloserClippedRowWhenAWholeRowSurvives() {
+        val initialRows = (0 until 50).map { number ->
+            TreeRowEntry(AgentSession(Session("demo", "s-$number")), depth = 0, first = false, last = false, located = false)
+        }
+        val (first, neighbor, reader, clipped) = initialRows.subList(20, 24)
+        val heights = mapOf(first to 24.dp, neighbor to 106.dp, reader to 92.dp, clipped to 76.dp)
+        var rows by mutableStateOf(initialRows)
+        rule.setContent {
+            val state = rememberLazyListState()
+            KeepAgentReadingPosition(state, rows, paginationFooter = false, scope = emptyList())
+            LazyColumn(Modifier.height(276.dp), state = state) {
+                items(rows, key = { it.key }) { row ->
+                    Box(Modifier.fillMaxWidth().height(heights[row] ?: 52.dp).testTag(row.key))
+                }
+            }
+        }
+
+        val list = rule.onNode(hasScrollToKeyAction())
+        list.performScrollToKey(first.key)
+        val viewport = list.getUnclippedBoundsInRoot()
+        val oldReader = rule.onNodeWithTag(reader.key).assertIsDisplayed()
+        val oldReaderBounds = oldReader.fetchSemanticsNode().boundsInRoot
+        val middle = list.fetchSemanticsNode().boundsInRoot.center.y
+        assertTrue("the removed row crosses the viewport midpoint", middle in oldReaderBounds.top..oldReaderBounds.bottom)
+        val clippedRow = rule.onNodeWithTag(clipped.key).assertIsDisplayed()
+        assertTrue("the closer row is clipped at the bottom", clippedRow.getUnclippedBoundsInRoot().bottom > viewport.bottom)
+        val wholeRow = rule.onNodeWithTag(neighbor.key).assertIsDisplayed()
+        val before = wholeRow.fetchSemanticsNode().boundsInRoot.top
+
+        // Compose's first visible key remains, while the fully visible neighbor moves out of its viewport.
         rule.runOnIdle {
             rows = rows.filterNot { it == reader || it == neighbor }.toMutableList().apply { add(8, neighbor) }
         }
 
         oldReader.assertDoesNotExist()
-        val after = closest.assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
-        assertEquals("the nearest surviving row keeps its old position", before, after, 2f)
+        val after = wholeRow.assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
+        assertEquals("fallback preserves the fully visible neighbor", before, after, 2f)
     }
 }
