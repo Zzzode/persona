@@ -305,8 +305,10 @@ internal fun AgentsScreen(
             }, idleRepos = repoTree, hideIdle = hideIdle)
     }
     val paginationFooter = page.pagination.paged && !firstPageIncomplete
+    // These keys describe list controls. The projected settings compare by value, so a Hub push can replace the page
+    // without resetting the anchor when the controls stayed the same.
     KeepAgentReadingPosition(listState, tree, paginationFooter,
-        scope = listOf(group, assistant.id, assistant.group, page.settings, page.preferences.range, page.preferences.foldedTabs,
+        scope = listOf(group?.namespace, assistant.id, assistant.group, page.settings, page.preferences.range, page.preferences.foldedTabs,
             page.preferences.display, expandedTasks, PersonaTheme.style))
     // Rows outside the tree name their computer while the list mixes computers, By To-do's their host while it mixes
     // hosts (iOS `rowMachine`, `mixedHosts`; #4338 A9).
