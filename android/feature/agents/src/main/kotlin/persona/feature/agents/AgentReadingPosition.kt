@@ -61,7 +61,9 @@ internal fun KeepAgentReadingPosition(
             if (current == null) {
                 if (!scrolled) return@collect
                 val middle = top + (bottom - top) / 2
-                val item = fullyVisible.lastOrNull { it.offset <= middle } ?: fullyVisible.firstOrNull()
+                // Prefer the row covering the midpoint. In a gap, use the closest row center.
+                val item = fullyVisible.firstOrNull { middle >= it.offset && middle < it.offset + it.size }
+                    ?: fullyVisible.minByOrNull { abs(it.offset + it.size / 2 - middle) }
                 reading = item?.let { AgentReadingRow(it.key, it.offset) }
             } else {
                 var anchor: AgentReadingRow? = current

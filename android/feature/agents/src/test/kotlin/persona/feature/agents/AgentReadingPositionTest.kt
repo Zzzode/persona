@@ -1,6 +1,7 @@
 package persona.feature.agents
 
 import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,6 +36,38 @@ import persona.core.domain.sort.AgentSession
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 class AgentReadingPositionTest {
     @get:Rule val rule = createAndroidComposeRule<ComponentActivity>()
+
+    @Test fun liveReorderKeepsTheNearestRowWhenTheMidpointFallsInAGap() {
+        val initialRows = (0 until 50).map { number ->
+            TreeRowEntry(AgentSession(Session("demo", "s-$number")), depth = 0, first = false, last = false, located = false)
+        }
+        val (first, preceding, reader) = initialRows.subList(20, 23)
+        val heights = mapOf(first to 40.dp, preceding to 80.dp, reader to 32.dp)
+        var rows by mutableStateOf(initialRows)
+        rule.setContent {
+            val state = rememberLazyListState()
+            KeepAgentReadingPosition(state, rows, paginationFooter = false, scope = emptyList())
+            LazyColumn(Modifier.height(310.dp), state = state, verticalArrangement = Arrangement.spacedBy(24.dp)) {
+                items(rows, key = { it.key }) { row ->
+                    Box(Modifier.fillMaxWidth().height(heights[row] ?: 52.dp).testTag(row.key))
+                }
+            }
+        }
+
+        val list = rule.onNode(hasScrollToKeyAction())
+        list.performScrollToKey(first.key)
+        val middle = list.fetchSemanticsNode().boundsInRoot.center.y
+        val precedingBounds = rule.onNodeWithTag(preceding.key).fetchSemanticsNode().boundsInRoot
+        val readingRow = rule.onNodeWithTag(reader.key).assertIsDisplayed()
+        val readingBounds = readingRow.fetchSemanticsNode().boundsInRoot
+        assertTrue("the midpoint falls in the gap between the two rows", precedingBounds.bottom < middle && middle < readingBounds.top)
+        assertTrue("the following row has the closer center", readingBounds.center.y - middle < middle - precedingBounds.center.y)
+
+        rule.runOnIdle { rows = rows.filterNot { it == reader }.toMutableList().apply { add(8, reader) } }
+
+        val after = readingRow.assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
+        assertEquals("the row nearest the midpoint keeps its old position", readingBounds.top, after, 2f)
+    }
 
     @Test fun liveRemovalKeepsTheClosestSurvivingRowAtItsOldHeight() {
         val initialRows = (0 until 50).map { number ->
