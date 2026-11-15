@@ -84,10 +84,11 @@ class AssistantReadinessShotsTest {
         override val outbox = MutableStateFlow(if (refused) listOf(OutboxMessage("m1", PendingMainConversation, "帮我看看这周的日程",
             DeliveryState.Refused, error = "no_machine", mainTarget = true)) else emptyList())
         val sent = mutableListOf<String>()
+        val readinessReads = mutableListOf<Pair<Boolean, AssistantReadiness>>()
         override suspend fun refresh() = Unit
         override suspend fun send(session: SessionKey, text: String, clientMessageId: String, clearDraft: String?) { sent += text }
         override suspend fun sendToMain(text: String, clientMessageId: String, draft: DraftSnapshot?) { sent += text }
-        override suspend fun readiness(probe: Boolean) = readiness
+        override suspend fun readiness(probe: Boolean) = readiness.also { readinessReads += probe to it }
         override suspend fun warm() {}
         override suspend fun endConversation(session: SessionKey) {}
         override suspend fun tasks(): List<ScheduledTask> = emptyList()
@@ -169,6 +170,48 @@ class AssistantReadinessShotsTest {
         }
         rule.onNodeWithText("助手还没接上模型").assertDoesNotExist()
         rule.onNodeWithText("Not logged in · Please run /login").assertExists()
+    }
+
+    @Test fun mainReadinessRefreshesWhenItsErrorClearsWhileAnotherChatIsOpen() {
+        val main = Session("mbp", "existing-main", state = "idle", turnErrorCode = "not_logged_in")
+        val other = Session("mbp", "other-chat", state = "idle")
+        val snapshot = AssistantSnapshot(mainSession = main.key, conversations = listOf(main, other))
+        val hub = Hub(notLoggedIn, refused = false).also { it.assistant.value = snapshot }
+        var requested by mutableStateOf(main.key)
+        rule.setContent {
+            CompositionLocalProvider(LocalHubFeatures provides setOf(AssistantReadinessFeature)) {
+                AssistantScreen(navigator, hub, hub, startConversation = { main.key }, management = hub,
+                    machines = emptyList(), requestedSession = requested, composerService = null,
+                    assistantChatContent = { active, _ ->
+                        androidx.compose.foundation.layout.Column {
+                            Text(active.sessionId)
+                            LocalMainChatGuidance.current?.invoke()
+                        }
+                    })
+            }
+        }
+
+        val guidance = rule.onNodeWithText("助手还没接上模型")
+        rule.onNodeWithText(main.sessionId).assertExists()
+        guidance.assertExists()
+        rule.runOnIdle { requested = other.key }
+        val otherChat = rule.onNodeWithText(other.sessionId).assertExists()
+        guidance.assertDoesNotExist()
+
+        val ready = AssistantReadiness()
+        val readsBefore = rule.runOnIdle { hub.readinessReads.size }
+        rule.runOnIdle {
+            hub.readiness = ready
+            hub.assistant.value = snapshot.copy(conversations = listOf(main.copy(turnErrorCode = null), other))
+        }
+        otherChat.assertExists()
+        rule.runOnIdle {
+            assertTrue("clearing the main chat's error reads readiness while the other chat is open",
+                (false to ready) in hub.readinessReads.drop(readsBefore))
+            requested = main.key
+        }
+        rule.onNodeWithText(main.sessionId).assertExists()
+        guidance.assertDoesNotExist()
     }
 
     @Test fun light() = shots("light", interact = true)

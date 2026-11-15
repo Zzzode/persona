@@ -302,15 +302,16 @@ fun AssistantScreen(
     val onHealthChat = active != null && active in healthKeys
     // "Compact context" and "New main chat" (#1727): the main conversation's menu, on hubs that offer them.
     val mainActions = if (pageManagement != null && !demo) MainActions.of(LocalHubFeatures.current) else MainActions(false, false)
-    // What the main conversation still needs (docs/assistant/onboarding.md 4.4), on hubs that work it out: asked when the tab
-    // shows, when a computer comes or goes and after the hub refused to start it.
+    // Track the main conversation's turn for readiness even while the user is reading another chat.
     val onMain = active != null && active == snapshot.mainSession
-    val mainSession = if (onMain) snapshot.conversations.firstOrNull { it.key == active } else null
+    val mainSession = snapshot.mainSession?.let { key -> snapshot.conversations.firstOrNull { it.key == key } }
     val readinessOn = pageManagement != null && !demo && AssistantReadinessFeature in LocalHubFeatures.current
     val mainReadiness = remember(pageManagement) { MainReadiness { probe -> requireNotNull(pageManagement).readiness(probe) } }
     var readinessHelp by remember { mutableStateOf<ReadinessHelp?>(null) }
     val machinesSeen = machines.joinToString(",") { "${it.id}:${it.online}" }
-    LaunchedEffect(mainReadiness, readinessOn, machinesSeen, mainSession?.state, mainSession?.turnErrorCode, mainSession?.modelPick) {
+    // Reopening main also checks for setup changes that arrive without a turn update.
+    LaunchedEffect(mainReadiness, readinessOn, machinesSeen, onMain,
+        snapshot.mainSession, mainSession?.state, mainSession?.turnErrorCode, mainSession?.modelPick) {
         if (readinessOn) mainReadiness.refresh()
     }
     androidx.lifecycle.compose.LifecycleEventEffect(androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
@@ -343,7 +344,7 @@ fun AssistantScreen(
                 Modifier.padding(horizontal = Tokens.Space.m, vertical = Tokens.Space.xs))
         }
     }
-    val shownCompaction = mainSession?.compaction
+    val shownCompaction = mainSession?.compaction.takeIf { onMain }
     var compaction by remember(active) { mutableStateOf(CompactionStatus()) }
     var compacting by remember { mutableStateOf(false) }
     var newMainOpen by remember { mutableStateOf(false) }
