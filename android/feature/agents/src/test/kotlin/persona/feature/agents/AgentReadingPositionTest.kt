@@ -149,4 +149,45 @@ class AgentReadingPositionTest {
         val after = wholeRow.assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
         assertEquals("fallback preserves the fully visible neighbor", before, after, 2f)
     }
+
+    @Test fun liveReorderKeepsAWholeNeighborAfterTheViewportClipsTheReadingRow() {
+        val initialRows = (0 until 50).map { number ->
+            TreeRowEntry(AgentSession(Session("demo", "s-$number")), depth = 0, first = false, last = false, located = false)
+        }
+        val (first, neighbor, reader) = initialRows.subList(20, 23)
+        val heights = mapOf(neighbor to 65.dp, reader to 112.dp)
+        var rows by mutableStateOf(initialRows)
+        var viewportHeight by mutableStateOf(300.dp)
+        rule.setContent {
+            val state = rememberLazyListState()
+            KeepAgentReadingPosition(state, rows, paginationFooter = false, scope = emptyList())
+            LazyColumn(Modifier.height(viewportHeight), state = state) {
+                items(rows, key = { it.key }) { row ->
+                    Box(Modifier.fillMaxWidth().height(heights[row] ?: 52.dp).testTag(row.key))
+                }
+            }
+        }
+
+        val list = rule.onNode(hasScrollToKeyAction())
+        list.performScrollToKey(first.key)
+        val readingRow = rule.onNodeWithTag(reader.key).assertIsDisplayed()
+        val initialBounds = readingRow.getUnclippedBoundsInRoot()
+        val initialViewport = list.getUnclippedBoundsInRoot()
+        val initialMiddle = (initialViewport.top + initialViewport.bottom) / 2
+        assertTrue("the whole reading row initially crosses the midpoint",
+            initialBounds.bottom < initialViewport.bottom && initialMiddle in initialBounds.top..initialBounds.bottom)
+        val wholeRow = rule.onNodeWithTag(neighbor.key).assertIsDisplayed()
+        val before = wholeRow.fetchSemanticsNode().boundsInRoot.top
+
+        rule.runOnIdle { viewportHeight = 185.dp }
+        val shortenedViewport = list.getUnclippedBoundsInRoot()
+        assertTrue("the old anchor is now clipped at the bottom", readingRow.assertIsDisplayed().getUnclippedBoundsInRoot().bottom > shortenedViewport.bottom)
+        assertTrue("its neighbor still fits", wholeRow.getUnclippedBoundsInRoot().bottom < shortenedViewport.bottom)
+
+        // Both sessions survive. Only the whole neighbor moves out of the first key's viewport.
+        rule.runOnIdle { rows = rows.filterNot { it == neighbor }.toMutableList().apply { add(8, neighbor) } }
+
+        val after = wholeRow.assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
+        assertEquals("the whole neighbor keeps its old position through the reorder", before, after, 2f)
+    }
 }

@@ -1,5 +1,6 @@
 package persona.feature.agents
 
+import androidx.compose.foundation.lazy.LazyListItemInfo
 import androidx.compose.foundation.lazy.LazyListLayoutInfo
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.Composable
@@ -8,9 +9,16 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import kotlin.math.abs
 
-private data class AgentReadingRow(val key: Any, val offset: Int)
+private data class AgentReadingRow(val key: Any, val offset: Int, val size: Int) {
+    fun fits(top: Int, bottom: Int, measuredSize: Int = size): Boolean =
+        offset >= top && offset + measuredSize <= bottom
+}
 
-private data class AgentReadingCorrection(val key: Any, val index: Int, val offset: Int, val measuredOffset: Int?)
+private fun LazyListItemInfo.readingRow() = AgentReadingRow(key, offset, size)
+
+private data class AgentReadingCorrection(val key: Any, val index: Int, val offset: Int)
+
+private data class PendingReadingCorrection(val request: AgentReadingCorrection, val before: LazyListLayoutInfo)
 
 private data class AgentReadingLayout(
     val layout: LazyListLayoutInfo,
@@ -33,7 +41,7 @@ internal fun KeepAgentReadingPosition(
     LaunchedEffect(state, scope) {
         var reading: AgentReadingRow? = null
         var settledRows = emptyList<AgentReadingRow>()
-        var lastCorrection: AgentReadingCorrection? = null
+        var pendingCorrection: PendingReadingCorrection? = null
         snapshotFlow {
             AgentReadingLayout(state.layoutInfo, state.isScrollInProgress, state.canScrollBackward,
                 currentTree.value, hasFooter.value)
@@ -41,7 +49,7 @@ internal fun KeepAgentReadingPosition(
             if (scrolling) {
                 reading = null
                 settledRows = emptyList()
-                lastCorrection = null
+                pendingCorrection = null
                 return@collect
             }
 
@@ -64,16 +72,25 @@ internal fun KeepAgentReadingPosition(
                 // Prefer the row covering the midpoint. In a gap, use the closest row center.
                 val item = fullyVisible.firstOrNull { middle >= it.offset && middle < it.offset + it.size }
                     ?: fullyVisible.minByOrNull { abs(it.offset + it.size / 2 - middle) }
-                reading = item?.let { AgentReadingRow(it.key, it.offset) }
+                reading = item?.readingRow()
             } else {
                 var anchor: AgentReadingRow? = current
                 var laidOut = rows.firstOrNull { it.key == current.key }
                 var index = laidOut?.index ?: entries.indexOfFirst { it.key == current.key }.takeIf { it >= 0 }?.plus(start)
-                if (index == null) {
-                    // Keep a surviving neighbor at its position from before the removal, even if it moved offscreen.
+                if (index == null || !current.fits(top, bottom, laidOut?.size ?: current.size) ||
+                    (laidOut != null && laidOut !in fullyVisible)
+                ) {
+                    // A removed or clipped anchor gives way to a surviving neighbor whose old position can still fit.
                     val neighbor = settledRows.sortedBy { abs(it.offset - current.offset) }
-                        .firstNotNullOfOrNull { old ->
-                            entries.indexOfFirst { it.key == old.key }.takeIf { it >= 0 }?.let { old to (start + it) }
+                        .firstNotNullOfOrNull { candidate ->
+                            if (candidate.key == current.key) return@firstNotNullOfOrNull null
+                            val measured = rows.firstOrNull { it.key == candidate.key }
+                            if (!candidate.fits(top, bottom, measured?.size ?: candidate.size) ||
+                                (measured != null && measured !in fullyVisible)
+                            ) return@firstNotNullOfOrNull null
+                            val target = measured?.index
+                                ?: entries.indexOfFirst { it.key == candidate.key }.takeIf { it >= 0 }?.plus(start)
+                            target?.let { candidate to it }
                         }
                     anchor = neighbor?.first
                     index = neighbor?.second
@@ -82,18 +99,22 @@ internal fun KeepAgentReadingPosition(
                 }
                 // An offscreen anchor needs to be restored by key; a visible one only needs an offset correction.
                 if (anchor != null && index != null && (laidOut == null || laidOut.offset != anchor.offset)) {
-                    val correction = AgentReadingCorrection(anchor.key, index, -anchor.offset, laidOut?.offset)
-                    // A list whose end clamps the offset can report the same result after a request.
-                    if (correction != lastCorrection && !state.isScrollInProgress) {
-                        lastCorrection = correction
-                        state.requestScrollToItem(index, correction.offset)
+                    val request = AgentReadingCorrection(anchor.key, index, -anchor.offset)
+                    val pending = pendingCorrection?.takeIf { it.request == request }
+                    if (pending == null) {
+                        if (!state.isScrollInProgress) {
+                            pendingCorrection = PendingReadingCorrection(request, layout)
+                            state.requestScrollToItem(index, request.offset)
+                        }
+                        return@collect
                     }
-                    // A pending or clamped correction must not overwrite the previous reading positions.
-                    return@collect
+                    if (layout === pending.before) return@collect
+                    // Near the end Compose may clamp the request. Keep its actual position if the row still fits.
+                    reading = laidOut?.readingRow()
                 }
             }
-            lastCorrection = null
-            settledRows = fullyVisible.map { AgentReadingRow(it.key, it.offset) }
+            pendingCorrection = null
+            settledRows = fullyVisible.map { it.readingRow() }
         }
     }
 }
