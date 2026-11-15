@@ -145,6 +145,46 @@ class AgentsPaginationScreenTest {
         assertEquals("the reader stays at the same viewport position after its rank changes", before, after, 2f)
     }
 
+    @Test fun foldingAGroupStartsANewReadingPosition() {
+        val repository = PagedRepository(rowCount = 80, status = SessionListStatus(paged = true, loaded = true))
+        repository.sessions.value = repository.sessions.value.mapIndexed { index, session ->
+            val repo = when (index) {
+                0 -> "alpha"
+                1, 2 -> "beta"
+                else -> "gamma"
+            }
+            session.copy(cwd = "/demo/$repo")
+        }
+        val model = model(repository)
+        rule.setContent { PersonaTheme(style = AppStyle.Glass, reduceMotion = true) { AgentsScreen(model, Nowhere, AgentsMetadata()) } }
+        rule.waitUntil(5_000) { model.page.value.loaded }
+
+        val first = repository.sessions.value.first()
+        val beta = model.page.value.list.groups.single { group -> group.rows.any { it.session.title == "Task 1" } }
+        val list = rule.onNode(hasScrollToKeyAction())
+        list.performScrollToKey("session:${first.key.path}")
+        val middle = list.fetchSemanticsNode().boundsInRoot.center.y
+        val firstRow = rule.onNodeWithText(first.title).assertIsDisplayed()
+        val firstTop = firstRow.fetchSemanticsNode().boundsInRoot.top
+        val hidden = rule.onNodeWithText("Task 1").assertIsDisplayed()
+        val hiddenHeight = hidden.fetchSemanticsNode().boundsInRoot.height
+        val gamma = rule.onNodeWithContentDescription("gamma", substring = true).assertIsDisplayed()
+        val before = gamma.fetchSemanticsNode().boundsInRoot
+        assertTrue("the reading position falls in gamma below the fold", before.bottom < middle)
+
+        // Folding beta removes the rows between the first visible key and the reading position in gamma.
+        rule.onNodeWithContentDescription("beta", substring = true).assertIsDisplayed().performClick()
+        rule.waitUntil(5_000) {
+            val page = model.page.value
+            beta.id in page.settings.folded && page.list.groups.any { it.id == beta.id && it.folded }
+        }
+
+        hidden.assertDoesNotExist()
+        assertEquals("the first visible key stays put", firstTop, firstRow.fetchSemanticsNode().boundsInRoot.top, 2f)
+        val after = gamma.assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
+        assertTrue("gamma moves up with the manual fold", before.top - after >= hiddenHeight)
+    }
+
     @Test fun searchPreservesTextAndCaretWhileListProjectionIsPaused() {
         val repository = PagedRepository()
         // Leave the list dispatcher paused while the editor and repository receive input.

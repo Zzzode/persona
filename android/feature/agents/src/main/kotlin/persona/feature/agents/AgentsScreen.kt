@@ -305,11 +305,13 @@ internal fun AgentsScreen(
             }, idleRepos = repoTree, hideIdle = hideIdle)
     }
     val paginationFooter = page.pagination.paged && !firstPageIncomplete
-    // These keys describe list controls. The projected settings compare by value, so a Hub push can replace the page
-    // without resetting the anchor when the controls stayed the same.
+    val controls = page.settings
+    // Use the effective sort and the user's fold choices, which are kept separately from the live list projection.
     KeepAgentReadingPosition(listState, tree, paginationFooter,
-        scope = listOf(group?.namespace, assistant.id, assistant.group, page.settings, page.preferences.range, page.preferences.foldedTabs,
-            page.preferences.display, expandedTasks, PersonaTheme.style))
+        scope = listOf(group?.namespace, assistant.id, assistant.group, controls.grouping, controls.sort,
+            controls.quick, controls.machineFilter, controls.query, controls.hideBotmux,
+            controls.folded, controls.expandedIdle, controls.expandedQuiet, page.preferences.foldedTabs, expandedTasks,
+            page.preferences.range, page.preferences.display, PersonaTheme.style))
     // Rows outside the tree name their computer while the list mixes computers, By To-do's their host while it mixes
     // hosts (iOS `rowMachine`, `mixedHosts`; #4338 A9).
     val mixesComputers = remember(page.list, page.settings.machineFilter) { page.list.mixesComputers(page.settings.machineFilter) }
