@@ -185,6 +185,48 @@ class AgentsPaginationScreenTest {
         assertTrue("gamma moves up with the manual fold", before.top - after >= hiddenHeight)
     }
 
+    @Test fun compactListStartsANewReadingPositionForLaterLiveUpdates() {
+        val repository = PagedRepository(rowCount = 80, status = SessionListStatus(paged = true, loaded = true))
+        repository.sessions.value = repository.sessions.value.map { it.copy(lastText = "Current progress") }
+        val model = model(repository)
+        rule.setContent { PersonaTheme(style = AppStyle.Brief, reduceMotion = true) { AgentsScreen(model, Nowhere, AgentsMetadata()) } }
+        rule.waitUntil(5_000) { model.page.value.loaded }
+
+        val ordered = model.page.value.list.groups.single().rows.map { it.session }
+        val first = ordered[30]
+        val list = rule.onNode(hasScrollToKeyAction())
+        list.performScrollToKey("session:${first.key.path}")
+        val firstRow = rule.onNodeWithText(first.title).assertIsDisplayed()
+        val detailed = firstRow.fetchSemanticsNode().boundsInRoot
+
+        rule.onNodeWithContentDescription(rule.activity.getString(R.string.agents_action_list_settings)).performClick()
+        rule.onNodeWithText(rule.activity.getString(R.string.agents_menu_compact)).performClick()
+        rule.waitUntil(5_000) { model.page.value.preferences.compact }
+        val compact = firstRow.assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("the user chose a shorter row layout", compact.height < detailed.height)
+        assertEquals("the old reading anchor does not scroll the compact layout", detailed.top, compact.top, 2f)
+
+        val middle = list.fetchSemanticsNode().boundsInRoot.center.y
+        val promoted = (ordered.take(12) + ordered.subList(31, 63)).mapTo(mutableSetOf()) { it.key }
+        val promotedTitles = ordered.filter { it.key in promoted }.mapTo(mutableSetOf()) { it.title }
+        val reader = rule.onAllNodesWithText("Task ", substring = true).fetchSemanticsNodes()
+            .filter { it.boundsInRoot.height > 0 && it.config[SemanticsProperties.Text].any { text -> text.text in promotedTitles } }
+            .minBy { kotlin.math.abs(it.boundsInRoot.center.y - middle) }
+        val title = reader.config[SemanticsProperties.Text].first { it.text in promotedTitles }.text
+        val compactReadingTop = reader.boundsInRoot.top
+
+        rule.runOnIdle {
+            repository.sessions.value = repository.sessions.value.map { session ->
+                if (session.key in promoted) session.copy(state = "unread", status = "done") else session
+            }
+        }
+        rule.waitUntil(5_000) {
+            model.page.value.list.groups.singleOrNull()?.rows?.take(promoted.size)?.map { it.session.key }?.toSet() == promoted
+        }
+        val after = rule.onNodeWithText(title).assertIsDisplayed().fetchSemanticsNode().boundsInRoot.top
+        assertEquals("the live update preserves the compact reading position", compactReadingTop, after, 2f)
+    }
+
     @Test fun searchPreservesTextAndCaretWhileListProjectionIsPaused() {
         val repository = PagedRepository()
         // Leave the list dispatcher paused while the editor and repository receive input.

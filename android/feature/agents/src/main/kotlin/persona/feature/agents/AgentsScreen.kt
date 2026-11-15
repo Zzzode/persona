@@ -311,6 +311,7 @@ internal fun AgentsScreen(
     val paginationFooter = page.pagination.paged && !firstPageIncomplete
     val controls = page.settings
     // Use the effective sort and the user's fold choices, which are kept separately from the live list projection.
+    // Display includes the Compact/Detailed preference in every style.
     KeepAgentReadingPosition(listState, tree, paginationFooter,
         scope = listOf(group?.namespace, assistant.id, assistant.group, controls.grouping, controls.sort,
             controls.quick, controls.machineFilter, controls.query, controls.hideBotmux,
