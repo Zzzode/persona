@@ -55,6 +55,8 @@ internal object HomeTokens {
     val segmentHeight = 36.dp
     val segmentLight = Color(0xFFE6E6E6)
     val segmentDark = Color(0xFF3A3A3C)
+    const val switcherPressLightIntensity = 1f
+    const val switcherPressScale = 0.975f
     const val shellTextStep = 19f / 17f
     const val shellScaleMaximum = 1.6f
 }

@@ -12,6 +12,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.ripple.RippleAlpha
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.LocalRippleConfiguration
+import androidx.compose.material3.RippleConfiguration
+import androidx.compose.material3.RippleDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -550,6 +555,19 @@ private fun HomeNavigationLayout(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+private val HomeSwitcherGlassRipple = RippleDefaults.RippleAlpha.let {
+    RippleConfiguration(
+        rippleAlpha = RippleAlpha(
+            draggedAlpha = it.draggedAlpha,
+            focusedAlpha = it.focusedAlpha,
+            hoveredAlpha = it.hoveredAlpha,
+            pressedAlpha = 0f,
+        ),
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun GlassHomeSwitcher(
     items: List<NavItem>,
@@ -566,6 +584,13 @@ private fun GlassHomeSwitcher(
     val palette = PersonaTheme.palette
     val density = androidx.compose.ui.platform.LocalDensity.current
     val textMeasurer = androidx.compose.ui.text.rememberTextMeasurer()
+    val placed = LocalSlidingPillAnimate.current
+    val interactive = placed && LocalGlassSource.current != null &&
+        PersonaTheme.glass == GlassLevel.Liquid && !PersonaTheme.reduceMotion
+    // The measuring copies only need the capsule's size.
+    val surface = if (placed) Modifier.homeSwitcherSurface(interactive) else Modifier
+    // The outer glass owns press feedback. Keep the segment's platform focus and hover cues.
+    val ripple = if (interactive) HomeSwitcherGlassRipple else LocalRippleConfiguration.current
     Box(modifier) {
         // One pill for the whole switch. iOS `ShellSwitch` / `SwitchMotion` (`ShellComponents.swift`):
         // a tap glides it on `Theme.Motion.state`, and the label's colour and weight change inside that
@@ -575,7 +600,7 @@ private fun GlassHomeSwitcher(
             selected = items.indexOfFirst { it.key == selected },
             count = items.size,
             color = if (PersonaTheme.darkTheme) HomeTokens.segmentDark else HomeTokens.segmentLight,
-            modifier = Modifier.testTag("home-switcher").floatingSurface(CircleShape).padding(surfacePadding),
+            modifier = Modifier.testTag("home-switcher").then(surface).padding(surfacePadding),
         ) { index ->
             val item = items[index]
             val chosen = item.key == selected
@@ -606,14 +631,16 @@ private fun GlassHomeSwitcher(
                 } else baseFittedSize
                 return labelStyle.copy(fontSize = fittedSize)
             }
-            Box(Modifier.width(segmentWidth).height(HomeTokens.segmentHeight * scale)
-                .clip(CircleShape)
-                .clickable(role = Role.Tab) { onClick(item) }
-                .semantics { this.selected = chosen }, contentAlignment = Alignment.Center) {
-                GlassSegmentLabel(
-                    item.label, selected = chosen, selectedColor = palette.ink, idleColor = palette.ink2,
-                    style = fitted(FontWeight.SemiBold), idleStyle = fitted(FontWeight.Normal),
-                )
+            CompositionLocalProvider(LocalRippleConfiguration provides ripple) {
+                Box(Modifier.width(segmentWidth).height(HomeTokens.segmentHeight * scale)
+                    .clip(CircleShape)
+                    .clickable(role = Role.Tab) { onClick(item) }
+                    .semantics { this.selected = chosen }, contentAlignment = Alignment.Center) {
+                    GlassSegmentLabel(
+                        item.label, selected = chosen, selectedColor = palette.ink, idleColor = palette.ink2,
+                        style = fitted(FontWeight.SemiBold), idleStyle = fitted(FontWeight.Normal),
+                    )
+                }
             }
         }
         val waiting = items.lastOrNull()?.badge ?: 0

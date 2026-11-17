@@ -13,6 +13,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -39,6 +40,7 @@ import dev.chrisbanes.haze.blur.HazeBlurStyle
 import dev.chrisbanes.haze.blur.HazeColorEffect
 import dev.chrisbanes.haze.blur.hazeBlur
 import dev.chrisbanes.haze.glass.GlassStyle
+import dev.chrisbanes.haze.glass.GlassTransformTarget
 import dev.chrisbanes.haze.glass.hazeGlass
 import dev.chrisbanes.haze.hazeSource
 import kotlinx.coroutines.delay
@@ -66,7 +68,28 @@ fun Modifier.glassSource(): Modifier {
  * opaque panel as the last resort. Outside the glass style it is a normal raised surface.
  */
 @Composable
-fun Modifier.floatingSurface(shape: RoundedCornerShape, accentEdge: Color? = null): Modifier {
+fun Modifier.floatingSurface(shape: RoundedCornerShape, accentEdge: Color? = null): Modifier =
+    floatingSurface(shape, accentEdge, GlassStyle.regular)
+
+private val HomeSwitcherGlass = GlassStyle.regular.then {
+    pressed {
+        lightingIntensity(HomeTokens.switcherPressLightIntensity)
+        scale(HomeTokens.switcherPressScale)
+    }
+}
+
+@Composable
+internal fun Modifier.homeSwitcherSurface(interactive: Boolean): Modifier =
+    if (interactive) floatingSurface(CircleShape, null, HomeSwitcherGlass, GlassTransformTarget.MaterialAndContent)
+    else floatingSurface(CircleShape)
+
+@Composable
+private fun Modifier.floatingSurface(
+    shape: RoundedCornerShape,
+    accentEdge: Color?,
+    glassStyle: GlassStyle,
+    transformTarget: GlassTransformTarget = GlassTransformTarget.MaterialOnly,
+): Modifier {
     val palette = PersonaTheme.palette
     val state = LocalGlassSource.current
     val edge = Brush.verticalGradient(listOf(accentEdge ?: palette.strokeTop, palette.strokeBottom))
@@ -81,7 +104,11 @@ fun Modifier.floatingSurface(shape: RoundedCornerShape, accentEdge: Color? = nul
         state == null || PersonaTheme.glass == GlassLevel.Solid ->
             this.clip(shape).background(palette.surfaceOpaque.copy(alpha = 0.97f)).border(1.dp, edge, shape)
         PersonaTheme.glass == GlassLevel.Liquid -> this
-            .hazeGlass(HazeInput.Sources(state), style = GlassStyle.regular.then { shape(shape); tint(tint) })
+            .hazeGlass(
+                HazeInput.Sources(state),
+                style = glassStyle.then { shape(shape); tint(tint) },
+                interactionTransformTarget = transformTarget,
+            )
             .border(1.dp, edge, shape)
         else -> this.clip(shape)
             .hazeBlur(HazeInput.Sources(state), style = HazeBlurStyle { blurRadius(28.dp); colorEffects(listOf(HazeColorEffect.tint(tint))) })

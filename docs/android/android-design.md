@@ -29,6 +29,8 @@ The maintainer requested visual alignment in #2589, not only removal of the four
 
 This is a reference contract, not a claim of identical platform rasterization. Android keeps its lawful system font, icon assets, IME and touch targets. Glass draws the iPhone's colors as they are and holds iOS's floors (white on the accent 3.5:1, links 3:1, words on the bubble 4.5:1; decision 2 of #4194), so its secondary text is iOS's gray, about 3.3:1 on light pages. Screenshot acceptance must compare the actual final APK with the native reference in both themes.
 
+The Glass home switcher's outer capsule lights at the touch position and compresses slightly while pressed, following the iPhone's interactive Liquid Glass shell. It uses the existing Haze surface and backdrop. The segments keep their focus and hover cues, with press feedback on the outer capsule. The unplaced width probes do not create glass renderers. Frosted, Solid and Reduce Motion keep the static material and the segment press cue.
+
 ### 1.1 Switching and saving
 
 - Entry: Settings › Interface style (`AppearanceSettings`). Each of the three options has a small preview drawn with that style's real components; tapping one applies it immediately, no restart. The preview is a one-third-size Agents page: one computer, one of its spaces and three sessions, with the same two-destination navigation above it.
