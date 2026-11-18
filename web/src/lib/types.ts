@@ -435,6 +435,9 @@ export interface Session {
   /** An assistant conversation moved out of the list (docs/assistant/assistant.md "Managing its own conversations"), or
    *  an archived agent (docs/protocol/protocol.md "Agent session archives": only the Archived list has those). */
   archived?: boolean;
+  /** The user-defined labels of an assistant conversation (docs/assistant/assistant.md "Conversation tags"), newest
+   *  write first's provenance aside; omitted when it carries none. An older hub never sends it. */
+  tags?: string[];
   /** The HTTP ports its processes listen on (docs/operations/ports.md): closing it would stop those servers, and they are
    *  the dev servers a preview offers (docs/web/preview.md). */
   ports?: Port[];
@@ -874,6 +877,8 @@ export interface Interaction {
   /** Session.folded_side of the card's session (#7944): the side session whose chat the card is answered in. */
   folded_side?: string;
   elicitation?: Elicitation;
+  /** Whether this assistant-owned operation can take a non-final owner question. */
+  can_clarify?: boolean;
   /** What a permission card needs filled in before it is approved (a password): such a card is never approved in one tap. */
   fields?: { key: string; label: string; secret?: boolean }[];
   /** The assistant is deciding whether it may answer this question for the user (docs/assistant/assistant.md "Assistant
