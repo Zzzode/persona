@@ -457,9 +457,13 @@ fun ChatComposer(
         trailing = {
             if (expanded && compactShell) {
                 if (enabled && modelPill != null) {
-                    // Measure the model with the room left by the fixed touch targets in the toolbar.
+                    // A model pill that cannot fit its touch target would overlap a neighbor.
                     BoxWithConstraints(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
-                        modelPill(if (maxWidth >= Tokens.Size.box80) ModelPillWidth.AgentComposer else ModelPillWidth.Compact)
+                        when {
+                            maxWidth >= Tokens.Size.box80 -> modelPill(ModelPillWidth.AgentComposer)
+                            maxWidth >= Tokens.MinTouch.android -> modelPill(ModelPillWidth.Compact)
+                            else -> Unit
+                        }
                     }
                 } else Spacer(Modifier.weight(1f))
             } else if (expanded && enabled) modelPill?.invoke(ModelPillWidth.of(composerDp))
