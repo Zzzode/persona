@@ -409,6 +409,24 @@ order, assistant switching, real-page phone home/search/empty states in every st
 Advanced folding and owner-aware selection. Captures produced by these tests are **Native JVM Compose renders**,
 not emulator/handset screenshots, and do not prove system dialogs, background survival or live hub transport.
 
+### One read-only About Version generation experiment (#9694)
+
+The production About group remains the unchanged handwritten `AboutSettingsPage`, including native Version/Build
+reads and `BuildCommit.parse`, short-hash presentation and full-value copy. There is no setting, experiment switch,
+new style, app route, generator initialization or runtime. `android/refract/about/README.md` owns the bounded
+Android-only consumer experiment: one shared Swift Version row, an immutable typed model, direct mapping to the
+existing `JRow` and resources, a source-pinned CLI and a deterministic regenerate-and-diff command. Its generated
+Kotlin and its model adapter live only in `:feature:settings`'s test source set; ordinary debug/release source sets
+exclude them. `AboutVersionRefractTest` calls the generated row for comparison, never as the production fallback.
+Removing the experiment leaves the original screen and behavior intact.
+
+The comparison test requires pixel-identical native/generated rows in Glass, Brief and Board, light/dark,
+en/zh-Hans/ja and standard/2x text, plus a localized missing-version fallback. Existing `AboutBuildCommitTest` and
+`AboutBuildCommitShotsTest` retain native Commit coverage. These are **Native JVM Compose component captures**, not
+emulator/handset, accessibility-service, navigation or performance evidence. The pilot makes no three-platform
+readiness, performance-parity or complete-migration claim. The CLI's second-backend schema-validation output stays
+in temporary storage; no iOS/HarmonyOS destination is created.
+
 ### Large-window Settings presentation and hardware keys
 
 On regular and expanded windows, Settings keeps the same `settingsSheetStack`, entries, ViewModel stores and root Close / child Back behavior, but `JSettingsSheet` presents them inside a centered page-sized card. The card uses `SettingsPageSizing` (maximum width and height aliasing `ReadingWidth`, minimum margin `Tokens.Space.xl`) and the actual safe drawing bounds. The existing list-detail directive still decides when to show one pane. Compact and wide-phone windows retain the original full-window sheet. One `movableContentOf` moves the same Settings composition between the two containers, preserving non-saveable state and running effects; a fixed-key `SaveableStateHolder` additionally carries saveable drafts and list state.
@@ -1140,6 +1158,31 @@ Confirm the connection on the pairing page, handle permissions and the checklist
 ```
 
 Wait until the page is ready before taking screenshots. For batch screenshots use `./scripts/app/android.sh shots`; debug direct-entry arguments are below. None connect to a production hub. For scrolling performance see "Interface style performance".
+
+## Process-start pairing restore
+
+`ConnectionRuntime.start()` schedules registry restoration and legacy migration on `Dispatchers.IO` instead of blocking the
+caller with `runBlocking`. It publishes the startup job before starting it; `settled()` joins that job and then takes the
+runtime gate, so callers resume only after the restored groups and selection are installed. `WiredPairingService.restore()`
+exposes that barrier through `PairingService`; implementations without asynchronous restoration return immediately.
+
+The main activity and share sheet keep their existing restore loading UI. Boot and notification receivers use `goAsync`
+(and join the resume job), workers and Glance suspend, and the foreground service promotes before making its deferred
+pairing decision. Notification and surface collectors also wait before reading `isPaired`: the initial `false` means
+restoration is pending, not that the user unpaired, so it must not stop services, clear a saved fleet, publish empty
+shortcuts or answer an action against an empty scope. `FleetFeed.settled()` additionally waits for the saved fleet
+snapshot, so a tile or widget cannot navigate or render from the empty pre-restore value. The tile immediately launches
+`TileRouteActivity` through `startActivityAndCollapse`; that foreground activity waits for the saved fleet and performs the
+final navigation after the tile service is destroyed, without relying on a background `Context.startActivity()`.
+
+`ConnectionRuntimeStartupTest`, `NotificationRuntimePairingRestoreTest`, `ReceiverPairingRestoreTest` and
+`ApproveFirstPairingRestoreTest` cover these barriers with deliberately delayed restoration.
+
+A restored `GroupRuntime` constructs its initial `HubNetwork` from `ConnectivityManager.activeNetwork` and its capabilities,
+including the Android 37 local-network permission state. Its constructor does not dial immediately: `activate()` first
+installs the group's data and reconciliation collectors, then starts the connection. The existing callback and
+`refreshNetwork()` path still handles later changes and local-address details, so the first route selection no longer waits
+for a callback or a second reconnect.
 
 ## Debug against release
 
@@ -1950,6 +1993,7 @@ Ported from old main-line App chat code (d2d484ef, 4588285d) on 2026-11-02, redr
   While the session waits on you, an Agent chat's running summary reads Waiting for you, as the header does, with no elapsed time or spinner (`workSummary(waiting = true)`, #2483); the turn stays the live one and folds and opens as before. It waits on you when the hub's unified state says needs you (a question, plan or permission a hook holds while herdr's status stays `working`), the status says `blocked`, or one of the session's own requests is pending on the phone; the header goes by the same state (`turnWaitsOnYou`, `needsYou` in `ChatState.kt`). A task agent's request alone puts Waiting for you in the header but leaves this turn working.
   Codex commentary is assistant text as in `docs/integrations/codex.md` (#5853). `ItemsDatabase` 5 (`MIGRATION_4_5`, registered in both cache builders) drops cache rows written when those items were thinking; no schema or user data is migrated. `ContinuityNarrationTest` covers expanded narration being replaced by a folded page without losing the final answer outside its seq + block range.
   Paseo's input to an agent (another agent's message, a child's notice, a schedule's run) is a message from another session, a subagent's task note or a notice, as in `docs/integrations/paseo.md` (#8220). `ItemsDatabase` 6 (`MIGRATION_5_6`, registered in both cache builders) drops cache rows that still hold the raw `<paseo-system>` envelopes as the user's messages; no schema or user data is migrated.
+  Codex's `clock.sleep`, SubAgentActivity and CollabAgentToolCall are tool calls (`sleep`, `subagent`, `wait_agent`) as in `docs/integrations/codex.md` (#10436). `ItemsDatabase` 7 (`MIGRATION_6_7`, registered in both cache builders) drops cache rows that still hold them as notices under the calls' ids; no schema or user data is migrated.
 - Tool naming follows iOS `ToolViews.swift` / `PersonaToolNames.swift` (#2753): Persona tools, `conversation_*`, `computer_*` / `browser_*`, `phone_*`, `mail_*` use names stripped of `mcp__x__`, localized verbs (Rename chat, Control computer, Phone, Read Agent chat…), icon and subject. Work row "Control computer macbook"; no app on `computer_state` gives "macbook · Whole screen" localized; `ask_user` first question; `Monitor` description or command first line. Unknown Persona-server tools "Call Persona · github read", others raw name (`namedToolVerb` in `core/domain`, `ToolVerbTest`, `ToolPresentationTest` in `feature/chat`).
 - TodoWrite plan uses `PlanCard`: title completed/total and current item (activeForm while in progress), right Step N/M or checkmark when done;
   tap title collapses to progress hairline. Completed dim/check, running current spinner, pending hollow circle; failed update shows Update failed even collapsed (`planProgress`).
@@ -1976,8 +2020,12 @@ Ported from old main-line App chat code (d2d484ef, 4588285d) on 2026-11-02, redr
   - The prewarm parses what the row parses (`MarkdownText.source`: with the paths `PathPresence` knows as links, as `PathLinks.markdown`, when the page opens paths). One key, one source; otherwise the two replace each other's entry on every update.
   - What is kept: the ids the prewarm last asked for (`keep`), and the 32 most recently used other ids (thinking, plans, recaps, older replies scrolled to). At about 19 bytes of parse per byte of reply (JVM, `retainedHeapPerEntry`), a full cache is about 4 MB of 2 KB replies, 33 MB of 16 KB ones.
   - While the last reply streams, the prewarm splits only that reply's parts again; the others are as the previous split left them.
+  - Ordinary deltas keep the repository's structural projection and row identities. `StructuralChatRepository.observeStructure` carries immutable structure plus per-message live-text holders; other repositories and delegating wrappers keep complete observation through the `ChatRepository.observeStructure` fallback. Complete observers retain the publish window from #8475. The page, search, link preload and prewarm consume live revisions independently, and only a row that owns a holder collects it. Explicit text updates take precedence.
+  - `ChatMarkdownCache.parseRenderState` exposes the parser's settled AST prefix to mikepenz's stable/tail renderer, retaining the renderer, content, components and annotator identities while the tail changes. Whole settlement and whole-parse fallbacks discard that split. Safe plain math/URL preprocessing uses the same settled blocks; protected/code/display-math spans and whole/final parses keep the existing whole-text behavior.
+  - `AssistantAncillaryStream` partitions an initial whole scan's positioned message-model, path, card and port results into settled blocks, then scans only the old tail plus the new suffix. Non-append edits and structured messages use the existing whole-message behavior, as does final settlement. Global card numbering, path/file limits and web/bare port ordering match whole processing.
   - A streaming reply (`update.streaming`, passed from `MessageContent` only) parses from its last settled block on: a paragraph, a heading, a rule or a closed code fence followed by a blank line is kept, and the rest is parsed at its offsets after it. Lists, block quotes, tables and HTML never settle (later lines can continue them). The whole text is parsed instead when it is not the previous text plus more, when it holds a reference-link definition (for the rest of the stream), when a tail fails to parse, and for a reply that is not streaming; once the stream ends, its final text is parsed whole once. `ChatMarkdownStreamTest` checks the tree (each node's type and offsets), the text and the links against a whole parse at every prefix of a corpus, and after a cut at each line's end, its first six places and every fifth character.
-  - Tests: `ChatMarkdownCacheTest` (one shared parse, a caller that leaves, the kept set after 1 and 40 other ids, the row finding the prewarm's source, a stream then its whole parse), `MarkdownPrewarmTest` (the kept split equals splitting afresh over random updates, and a streaming update keeps every other reply's parts as they were), `ChatMarkdownStreamTest` (also the characters a long reply's steps parse again, which a boundary that stops moving would multiply).
+  - Tests: `ChatMarkdownCacheTest` (one shared parse, a caller that leaves, the kept set after 1 and 40 other ids, the row finding the prewarm's source, a stream then its whole parse), `MarkdownPrewarmTest` (the kept split equals splitting afresh over random updates, and a streaming update keeps every other reply's parts as they were), `ChatMarkdownStreamTest` (also the characters a long reply's steps parse again, which a boundary that stops moving would multiply), `AssistantAncillaryStreamTest` (every-prefix whole-result equality and exact scanned suffixes), `ChatLiveItemsTest` (row-local updates and current on-demand readers), and `ChatMarkdownRendererIdentityTest` (settled AST and renderer identities, whole fallbacks), and `ChatMarkdownPreprocessorTest` (safe math/URL suffix rewrites and protected-content fallbacks).
+  - While the reader is frozen during a stream, `ChatListWindow.newMessageCount` holds its last value instead of de-duplicating history for each chunk. Turn settlement or following the newest end recomputes the original count; a later freeze with no held value also recomputes it.
   - Measured with `PERSONA_BENCH=1 ./gradlew :feature:chat:testDebugUnitTest --tests '*ChatMarkdownBench*' -i` (CPU and allocation over all threads, the old cache and this one in 11 alternating rounds; skipped without the variable, never in CI). On a desktop JVM (2026-11-10), a 16 KB reply streamed in 400 deltas took 767 ms of CPU and 1,144 MB of allocation before, 167 ms and 73 MB after; the prewarm's cycle over 80 replies after one other text went from 80 parses to none.
 - Code: `MessageText.kt` in `core/domain` (`messageText`, `imagePaths`, `FilePaths`), `lines/ApiErrors.kt` (`ApiErrorInfo`, `foldApiErrors`, `foldRecaps`; `ChatLine.ApiError` / `Recaps` in `LineModels.kt`, applied last in `chatLines`); `ChatRowActions.kt` in `feature/chat` (per-row full text/path/photos/viewer/menu/retry via `LocalChatRowActions`), `AttachedPhotos.kt`, `MessageMenu.kt`, `MessageHandoff.kt` (`handToPersona`, `rememberHandToPersona`), `ToolDetails.kt`, `ApiErrorCard.kt` (errors/recaps), `MessageExtras.kt` (full text/relative time/suggestions), `ContentPresentation.kt` (`messageModel`, `patchDiff`, `unifiedDiffLines`); design `ChatParts.kt` (`ChatPictureFrame`, `PhotoThumbnail`, `PhotoRow`, `PathChip`, `ChatNoteChip`, `ErrorCard`, `DetailField`, catalog Chat attachments and errors). App only passes `files`, `onOpenPath`, `onHandToPersona` in `ShellChat.kt`, and `ChatAppBindings.files` in `ChatWiringModule.kt`.
 - Tests: `MessageTextTest`, `PathRefsTest` (web `path-refs.test.ts` cases), `lines/ApiErrorsTest` (old `ApiErrorTest`), `LinesFixtureTest` (two new rows) in `core/domain`; `MessageContentTest` (photos/files/Codex diff/questions/timer/collapsed execution/plan/truncation), `WorkTraceShotsTest` (active/plan/done, styles × light / dark, `feature/chat/build/work-trace-shots/`), `MessageMenuTest` (items/quote/handoff/retry/error tags/time/suggestions), `ChatPicturesTest` (computer photos/viewer list), `PathLinksTest` (Markdown/batch/cache/failure), `PathLinksShotsTest` (JVM user/reply links, three styles × light / dark, `feature/chat/build/path-link-shots/`, link tap) in `feature/chat`.
