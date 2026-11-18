@@ -29,7 +29,9 @@ import androidx.compose.ui.test.hasAnyDescendant
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTouchInput
@@ -285,5 +287,31 @@ class ChatKeyboardDismissTest {
         assertEquals("a", composer.value.text)
         assertTrue(composer.focused)
         rule.onNodeWithTag("suggestion").assertExists()
+    }
+
+    @Test fun compactAgentComposerCanHideTheKeyboardWithoutLosingTheDraft() {
+        lateinit var composer: ChatComposerState
+        rule.setContent {
+            PersonaTheme(darkTheme = false, reduceMotion = true, style = AppStyle.Glass) {
+                composer = rememberChatComposerState()
+                probe.Around {
+                    ChatComposer(SessionKey("box", "s1"), composer, working = false, sending = false, canClear = false,
+                        service = null, onSend = {}, onCommand = {}, onNotice = {}, useShellSurface = true)
+                }
+            }
+        }
+        val hide = rule.onNodeWithContentDescription("收起键盘")
+        hide.assertDoesNotExist()
+        rule.onNodeWithTag("composer-expand").assertDoesNotExist()
+        rule.onNode(hasSetTextAction()).performTouchInput { click() }
+        rule.onNodeWithTag("composer-expand").assertExists()
+        rule.onNode(hasSetTextAction()).performTextInput("Draft")
+        probe.reset()
+        hide.performClick()
+        rule.runOnIdle {
+            assertEquals(listOf(false), probe.focusClears)
+            assertEquals(1, probe.hides)
+            assertEquals("Draft", composer.value.text)
+        }
     }
 }
