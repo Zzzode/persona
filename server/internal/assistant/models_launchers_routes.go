@@ -494,7 +494,8 @@ func (s *Service) machineLauncherRoutes() {
 		var all []ConfiguredLauncher
 		if purpose == "assistant" { // the main chat's menu, and the scheduled tasks' that follow it
 			if !d.ExternalInventory {
-				ctx = context.WithValue(ctx, pickerDiscoveryDeadline{}, time.Now().Add(launcherSyncTimeout))
+				// Leave a short window for own-service checks even when the shell uses its full sync timeout.
+				ctx = context.WithValue(ctx, pickerDiscoveryDeadline{}, time.Now().Add(launcherSyncTimeout+time.Second))
 			}
 			all, list, err = s.assistantPickerLaunchers(ctx, d, r.URL.Query().Get("refresh") == "1")
 			if err == nil {

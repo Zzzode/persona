@@ -85,17 +85,20 @@ func TestMainChatPickerUsesKnownProvidersDuringShellTimeout(t *testing.T) {
 		"other":  {{Name: "other-machine", Source: "zshrc"}},
 	}
 	f.mu.Unlock()
-	shellReads := 0
+	shellReads, ownServiceReads := 0, 0
 	for _, call := range calls {
 		if call.Method == DeviceLaunchersList {
 			shellReads++
 		}
 		if call.Method == DeviceLaunchersOwnService {
-			t.Fatal("picker asked the node about its own service after the discovery deadline")
+			ownServiceReads++
 		}
 	}
 	if shellReads != 1 {
 		t.Fatalf("cold picker made %d shell reads, want 1", shellReads)
+	}
+	if ownServiceReads != 1 {
+		t.Fatalf("cold picker made %d own-service reads, want 1 even on an older node", ownServiceReads)
 	}
 	_ = s.zshrcLaunchers(t.Context(), true)
 	f.mu.Lock()
@@ -111,6 +114,31 @@ func TestMainChatPickerUsesKnownProvidersDuringShellTimeout(t *testing.T) {
 	f.mu.Unlock()
 	if got := pickerNames(t, s, "assistant"); !slices.Equal(got, []string{"live-alias", "gw"}) {
 		t.Fatalf("picker after shell recovery = %v", got)
+	}
+}
+
+func TestMainChatPickerChecksOwnServiceAfterShellTimeout(t *testing.T) {
+	s, f := mainChatFixture(t)
+	putLaunchers(t, s,
+		storedLauncher{ManagedLauncher: proto.ManagedLauncher{Name: "gw", Model: "m1", OwnService: proto.OwnServiceSkip}},
+		storedLauncher{ManagedLauncher: proto.ManagedLauncher{Name: "fallback", Model: "m1", OwnService: proto.OwnServiceUse}},
+	)
+	old := launcherSyncTimeout
+	launcherSyncTimeout = 50 * time.Millisecond
+	t.Cleanup(func() { launcherSyncTimeout = old })
+	f.mu.Lock()
+	f.slowLaunchers = map[string]bool{"server": true}
+	f.ownServices = map[string]proto.OwnServiceState{
+		"server/claude": {Agent: "claude", Known: true, Own: true, Via: "login"},
+	}
+	f.mu.Unlock()
+
+	p := pickerOf(t, s, "server", "assistant")
+	if got := p.names(); !slices.Equal(got, []string{"fallback"}) {
+		t.Fatalf("picker during shell timeout = %v, want [fallback]", got)
+	}
+	if len(p.Unavailable) != 1 || p.Unavailable[0].Name != "gw" || p.Unavailable[0].Code != proto.CodeLauncherOwnService {
+		t.Fatalf("picker unavailable = %+v, want gw with %s", p.Unavailable, proto.CodeLauncherOwnService)
 	}
 }
 
