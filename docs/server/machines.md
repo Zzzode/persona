@@ -11,6 +11,11 @@ Each computer's OS, current load and curves for the past 24 hours. The node coll
 | App | `apple/Persona/Views/Machines/` (`MachinesView`, `MachineDetailView`, `MetricCharts`, `OSBadge`), model `apple/Packages/PersonaWire/Sources/PersonaWire/MachineMetrics.swift` |
 | Inspect local samples / overhead | `personad sysmon [n]`: prints system info and n+1 samples (one every 10 seconds, n ≤ 8640, one day); final line gives actual sample count, collection duration and personad CPU (Ctrl-C stops immediately) |
 
+For node `session.send` and `codex.answer`, the devices manager supplies the optional `prompt_language` native
+language name from the owner locale. It replaces caller-provided variants and affects only generated Agent prompt
+wrappers. Missing language preserves legacy Chinese; old nodes ignore the field. It neither supplies nor changes
+owner provenance or permission mode. Details: `docs/assistant/prompts.md` ("Agent prompt migration (#6268)").
+
 ## Who connects to computers
 
 Product decision: **computers belong to the manager, which connects to them itself**; the hub sees no computers directly, so the bus has nothing to gate between computers and manager (physical separation). During migration there is only one manager, the chief manager (assistant process `personad assistant`), holding all computers.
@@ -409,7 +414,8 @@ The retired native Mac app showed this section through the shared iOS view and r
 
 ## Diagnosis and cleanup (#8037)
 
-An alert on a machine card says what is wrong; the sheet it opens also says why and offers the action that fixes it. For memory, CPU and disk the "why" comes from the computer
+An alert on a machine card says what is wrong; the sheet it opens also says why and offers the action that fixes it. A launcher's alert shows the recorded error without terminal escapes or
+the shell's startup noise, and the redacted line is already clean (`docs/server/launcher-health.md` "Checks"). For memory, CPU and disk the "why" comes from the computer
 itself: the manager routes `GET /api/v1/machines/{mid}/diagnosis` and `POST /api/v1/machines/{mid}/cleanup` (`devices/diagnosis.go`, `full` devices only) call the node's
 `machine.diagnose` and `machine.cleanup` (`node/machdiag/`, capability `machine_diagnose`). The wire is in [protocol.md](../protocol/protocol.md) ("Data types").
 
