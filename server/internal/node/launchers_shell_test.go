@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/nwverse/persona/server/internal/proto"
 )
 
 // asBash runs script the way the node does where the login shell is bash (`bash -ic`), with defs as the ~/.bashrc,
@@ -118,6 +120,43 @@ exit 1
 	}
 	if starts, err := os.ReadFile(started); err != nil || string(starts) != "start\nstart\n" {
 		t.Fatalf("retry and cache should run the shell once more: %q, %v", starts, err)
+	}
+}
+
+func TestFreshLauncherCacheDoesNotJoinShellScan(t *testing.T) {
+	shellLaunchers(t, "cached")
+	started, release := make(chan struct{}), make(chan struct{})
+	refresh := launcherCache.fetch.DoChan("shell", func() (any, error) {
+		close(started)
+		<-release
+		return nil, errors.New("shell scan failed")
+	})
+	defer func() {
+		close(release)
+		<-refresh
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("shell refresh did not start")
+	}
+
+	type answer struct {
+		list []proto.Launcher
+		err  error
+	}
+	done := make(chan answer, 1)
+	go func() {
+		list, err := (&Node{}).launchers(t.Context())
+		done <- answer{list, err}
+	}()
+	select {
+	case got := <-done:
+		if got.err != nil || !slices.Equal(got.list, []proto.Launcher{{Name: "cached"}}) {
+			t.Fatalf("fresh launcher list = %v, error = %v", got.list, got.err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("fresh cache read waited for the in-flight scan")
 	}
 }
 

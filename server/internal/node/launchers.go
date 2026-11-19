@@ -93,14 +93,14 @@ func launcherOutput(out string) string {
 // functions), then every alias that runs claude (`alias dmcc="ANTHROPIC_BASE_URL=… claude …"`), by name. A name
 // the helper lists is not repeated; none at all: plain claude.
 func (n *Node) launchers(ctx context.Context) ([]proto.Launcher, error) {
+	if list := freshLauncherList(); list != nil {
+		return list, nil
+	}
 	result, err, _ := launcherCache.fetch.Do("shell", func() (any, error) {
-		launcherCache.Lock()
-		if time.Since(launcherCache.at) < time.Minute && launcherCache.list != nil {
-			list := launcherCache.list
-			launcherCache.Unlock()
+		// A scan may have completed between the first cache read and entry into the group.
+		if list := freshLauncherList(); list != nil {
 			return list, nil
 		}
-		launcherCache.Unlock()
 		// A caller can give up before the shell finishes. The scan still updates the cache for the next ask.
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
 		defer cancel()
@@ -119,6 +119,15 @@ func (n *Node) launchers(ctx context.Context) ([]proto.Launcher, error) {
 		return nil, err
 	}
 	return result.([]proto.Launcher), nil
+}
+
+func freshLauncherList() []proto.Launcher {
+	launcherCache.Lock()
+	defer launcherCache.Unlock()
+	if time.Since(launcherCache.at) >= time.Minute {
+		return nil
+	}
+	return launcherCache.list
 }
 
 func scanLaunchers(ctx context.Context) ([]byte, error) {
