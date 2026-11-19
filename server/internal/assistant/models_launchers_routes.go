@@ -492,13 +492,22 @@ func (s *Service) machineLauncherRoutes() {
 		var err error
 		var unavailable []unavailableLauncher
 		var all []ConfiguredLauncher
-		if purpose == "assistant" { // the main chat's menu, and the scheduled tasks' that follow it
+		switch purpose {
+		case "assistant":
 			if !d.ExternalInventory {
 				// Leave a short window for own-service checks even when the shell uses its full sync timeout.
 				ctx = context.WithValue(ctx, pickerDiscoveryDeadline{}, time.Now().Add(launcherSyncTimeout+time.Second))
 			}
 			all, list, unavailable, err = s.assistantPickerLaunchers(ctx, d, r.URL.Query().Get("refresh") == "1", s.requestLang(r))
-		} else {
+		case "task":
+			all, err = s.pickerLaunchersOn(ctx, mid, "")
+			if err == nil {
+				list, err = s.assistantLaunchersOf(ctx, mid, all)
+				if err == nil {
+					unavailable = s.mainChatUnavailable(ctx, mid, all, list, s.requestLang(r))
+				}
+			}
+		default:
 			list, err = s.pickerLaunchersOn(ctx, mid, host)
 			list = slices.DeleteFunc(list, func(l ConfiguredLauncher) bool {
 				return proto.IsExternalLauncher(l.Name) || l.Source == proto.ExternalLauncherSource
