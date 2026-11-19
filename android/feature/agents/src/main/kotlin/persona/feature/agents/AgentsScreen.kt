@@ -62,6 +62,7 @@ internal fun AgentsScreen(
 ) {
     val latestPage by model.page.collectAsStateWithLifecycle()
     val listState = rememberLazyListState()
+    val hubGroupIds = remember(groups) { groups.map { it.id }.toSet() }
     LaunchedEffect(model, listState, latestPage.pagination.paged) {
         if (!latestPage.pagination.paged) return@LaunchedEffect
         snapshotFlow {
@@ -76,12 +77,12 @@ internal fun AgentsScreen(
     // The current assistant's agents (docs/assistant/managers.md "Clients"), and the cards that are theirs.
     val assistant = persona.core.designsystem.currentAssistant()
     // What the list draws: the hub's page, held still for a bounded time while it is scrolled (AgentsFeedHold.kt). The
-    // controls and the window size start it over; a rebuilt window is not told apart from a new list.
+    // controls, paired groups and window size start it over.
     val window = androidx.compose.ui.platform.LocalConfiguration.current
     // The pill counts what the Needs You section of a page would draw, from the requests the screen shows for that page.
     val feed = rememberAgentsFeed(latestPage, { p ->
         agentsFeedNeedsYou(p, shownRequests(everyRequest, group, assistant, p.sessions)) { key -> model.operationState.value.sessions[key]?.closed == true }
-    }, listOf(group?.namespace, assistant.id, assistant.group, latestPage.settings, latestPage.preferences, PersonaTheme.style,
+    }, listOf(hubGroupIds, group?.namespace, assistant.id, assistant.group, latestPage.settings, latestPage.preferences, PersonaTheme.style,
         window.screenWidthDp, window.screenHeightDp), listState)
     val page = feed.page
     LaunchedEffect(model, assistant) { model.show(assistant) }
@@ -330,7 +331,7 @@ internal fun AgentsScreen(
             }, idleRepos = repoTree, hideIdle = hideIdle)
     }
     // Tap-driven row motion only (#9600). Hub pushes change [tree] with the flag clear, so they stay put.
-    val listTapMotion = remember { ListTapMotion() }
+    val listTapMotion = remember(hubGroupIds) { ListTapMotion() }
     // The motion follows this screen's model. A second model (the shot loop, or a new key) must not
     // leave the flag on the previous one: that list then folds with nothing armed.
     DisposableEffect(model, listTapMotion) {
@@ -351,7 +352,7 @@ internal fun AgentsScreen(
     // Display includes the Compact/Detailed preference in every style.
     val restoring = RestoreAgentReadingPosition(listState, tree, paginationFooter, page.loaded)
     KeepAgentReadingPosition(listState, tree, paginationFooter,
-        scope = listOf(group?.namespace, assistant.id, assistant.group, controls.grouping, controls.sort,
+        scope = listOf(hubGroupIds, group?.namespace, assistant.id, assistant.group, controls.grouping, controls.sort,
             controls.quick, controls.machineFilter, controls.query, controls.hideBotmux,
             controls.folded, controls.expandedIdle, controls.expandedQuiet, controls.expandedAll, page.preferences.foldedTabs, expandedTasks,
             page.preferences.range, page.preferences.display, PersonaTheme.style),
@@ -395,6 +396,8 @@ internal fun AgentsScreen(
     // State Cards float on the page, each a card of its own: By Repository's cards give way to them, as iOS's do (#4338 A9).
     JAgentHomeSurface(page.preferences.grouping == AgentGrouping.Repo && page.preferences.display != AgentListDisplay.Cards) {
     Box(Modifier.fillMaxSize()) {
+        // A membership change rebuilds the lazy list's drawing layers. The list state keeps the surviving scroll anchor.
+        key(hubGroupIds) {
         JListPage(
             title = if (connection == ConnectionState.Online) names[page.settings.machineFilter] ?: "Agents" else connection.title,
             // The list holds text fields (search, a password card's password, #1581): it ends above the keyboard so the
@@ -424,7 +427,8 @@ internal fun AgentsScreen(
                     JSearchField(settings.query, model::query, stringResource(R.string.agents_search_placeholder), Modifier.padding(bottom = Tokens.Space.xs))
                 }
             }
-            if (groups.size > 1) item("groups") {
+            // Hub membership changes remove this control without a list-tap animation.
+            if (groups.size > 1) this@JListPage.item("groups") {
                 GroupFilterRow(groups, page.groupCounts, group, model::group)
             }
             if (!homeChrome) item("machines") {
@@ -536,7 +540,8 @@ internal fun AgentsScreen(
                     value = pluralStringResource(R.plurals.agents_mark_all_read_count, unread.size, unread.size),
                     chevron = false, onClick = { confirmRead = unread })
             }
-            if (firstPageIncomplete) item("initial-state") {
+            // Loading belongs to the current page. Drop its drawing layer as soon as real rows arrive.
+            if (firstPageIncomplete) this@JListPage.item("initial-state") {
                 if (page.pagination.failed) JNotice(
                     text = stringResource(persona.core.designsystem.R.string.designsystem_load_failed),
                     modifier = Modifier.padding(horizontal = Tokens.Space.l, vertical = Tokens.Space.xs),
@@ -773,6 +778,7 @@ internal fun AgentsScreen(
             }
             tapScope.commit()
             }
+        }
         }
         AgentsFeedNote(feed, latestPage, Modifier.align(Alignment.BottomCenter).navigationBarsPadding()
             .padding(horizontal = Tokens.Space.page).padding(bottom = Tokens.Space.l))
