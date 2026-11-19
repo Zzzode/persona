@@ -19,10 +19,11 @@ import (
 // launcherListing is a node's launchers.list: the launchers, and the shell and rc file they came from ("" from an
 // older node).
 type launcherListing struct {
-	Source    string           `json:"source,omitempty"`
-	Launchers []proto.Launcher `json:"launchers"`
-	Shell     string           `json:"shell"`
-	RCFile    string           `json:"rc_file"`
+	Source      string           `json:"source,omitempty"`
+	Launchers   []proto.Launcher `json:"launchers"`
+	HostRuntime bool             `json:"host_runtime,omitempty"`
+	Shell       string           `json:"shell"`
+	RCFile      string           `json:"rc_file"`
 }
 
 // listLaunchers asks one machine for its list, giving it launcherSyncTimeout; an offline machine is not asked.
@@ -299,13 +300,16 @@ func (s *Service) assistantPickerLaunchers(ctx context.Context, d Device, refres
 			if ctx.Err() != nil || apierr.NodeCode(syncErr) != "timeout" {
 				return nil, nil, syncErr
 			}
-			listing.Launchers = nil
+			listing = launcherListing{} // the saved snapshot was requested without an engine host
 			lastSeen, _ := s.zshrcLaunchersLastSeen(ctx)
 			if i := slices.IndexFunc(lastSeen, func(m zshrcLaunchers) bool { return m.MachineID == d.ID }); i >= 0 {
 				listing.Launchers = lastSeen[i].Launchers
 			}
 		}
-		res := machineLauncherListing{Launchers: make([]proto.LauncherEnvelope, 0, len(listing.Launchers))}
+		res := machineLauncherListing{
+			Launchers:   make([]proto.LauncherEnvelope, 0, len(listing.Launchers)),
+			HostRuntime: listing.HostRuntime,
+		}
 		for _, l := range listing.Launchers {
 			res.Launchers = append(res.Launchers, proto.LauncherEnvelope(l))
 		}
