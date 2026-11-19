@@ -12,6 +12,7 @@ import (
 	"github.com/nwverse/persona/server/internal/apierr"
 	"github.com/nwverse/persona/server/internal/assistantwire"
 	"github.com/nwverse/persona/server/internal/compat"
+	"github.com/nwverse/persona/server/internal/i18n"
 	"github.com/nwverse/persona/server/internal/proto"
 	"github.com/nwverse/persona/server/internal/textfmt"
 )
@@ -285,20 +286,21 @@ func (s *Service) pickerLaunchersFrom(ctx context.Context, machine string, ls []
 }
 
 // assistantPickerLaunchers bounds live shell discovery to the launcher sync deadline. If the shell is slow to start,
-// the machine's last known launchers and any Persona-managed providers can still populate the main chat's menu.
-func (s *Service) assistantPickerLaunchers(ctx context.Context, d Device, refresh bool) (picker, fits []ConfiguredLauncher, err error) {
+// the machine's last known launchers and any Persona-managed providers can still populate the main chat's menu,
+// including providers that cannot run here and why.
+func (s *Service) assistantPickerLaunchers(ctx context.Context, d Device, refresh bool, lang i18n.Lang) (picker, fits []ConfiguredLauncher, unavailable []unavailableLauncher, err error) {
 	var syncErr error
 	if d.ExternalInventory {
 		picker, err = s.externalPickerLaunchers(ctx, d, refresh)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	} else {
 		var listing launcherListing
 		listing, syncErr = s.listLaunchers(ctx, d)
 		if syncErr != nil {
 			if ctx.Err() != nil || apierr.NodeCode(syncErr) != "timeout" {
-				return nil, nil, syncErr
+				return nil, nil, nil, syncErr
 			}
 			listing = launcherListing{} // the saved snapshot was requested without an engine host
 			lastSeen, _ := s.zshrcLaunchersLastSeen(ctx)
@@ -317,10 +319,14 @@ func (s *Service) assistantPickerLaunchers(ctx context.Context, d Device, refres
 		picker = s.pickerLaunchersFrom(ctx, d.ID, launchers)
 	}
 	fits, err = s.assistantLaunchersOf(ctx, d.ID, picker)
-	if err == nil && len(fits) == 0 {
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	unavailable = s.mainChatUnavailable(ctx, d.ID, picker, fits, lang)
+	if len(fits) == 0 && len(unavailable) == 0 {
 		err = syncErr
 	}
-	return picker, fits, err
+	return picker, fits, unavailable, err
 }
 
 // assistantLaunchers are the machine's launchers backed by a provider the main conversation supports.

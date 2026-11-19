@@ -119,8 +119,9 @@ func TestMainChatPickerUsesKnownProvidersDuringShellTimeout(t *testing.T) {
 
 func TestMainChatPickerChecksOwnServiceAfterShellTimeout(t *testing.T) {
 	s, f := mainChatFixture(t)
+	gw := storedLauncher{ManagedLauncher: proto.ManagedLauncher{Name: "gw", Model: "m1", OwnService: proto.OwnServiceSkip}}
 	putLaunchers(t, s,
-		storedLauncher{ManagedLauncher: proto.ManagedLauncher{Name: "gw", Model: "m1", OwnService: proto.OwnServiceSkip}},
+		gw,
 		storedLauncher{ManagedLauncher: proto.ManagedLauncher{Name: "fallback", Model: "m1", OwnService: proto.OwnServiceUse}},
 	)
 	old := launcherSyncTimeout
@@ -139,6 +140,13 @@ func TestMainChatPickerChecksOwnServiceAfterShellTimeout(t *testing.T) {
 	}
 	if len(p.Unavailable) != 1 || p.Unavailable[0].Name != "gw" || p.Unavailable[0].Code != proto.CodeLauncherOwnService {
 		t.Fatalf("picker unavailable = %+v, want gw with %s", p.Unavailable, proto.CodeLauncherOwnService)
+	}
+
+	putLaunchers(t, s, gw)
+	p = pickerOf(t, s, "server", "assistant")
+	if len(p.Launchers) != 0 || len(p.Unavailable) != 1 ||
+		p.Unavailable[0].Name != "gw" || p.Unavailable[0].Code != proto.CodeLauncherOwnService {
+		t.Fatalf("picker with only a skipped provider = %+v, want an unavailable gw with %s", p, proto.CodeLauncherOwnService)
 	}
 }
 

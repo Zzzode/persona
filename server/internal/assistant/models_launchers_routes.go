@@ -497,10 +497,7 @@ func (s *Service) machineLauncherRoutes() {
 				// Leave a short window for own-service checks even when the shell uses its full sync timeout.
 				ctx = context.WithValue(ctx, pickerDiscoveryDeadline{}, time.Now().Add(launcherSyncTimeout+time.Second))
 			}
-			all, list, err = s.assistantPickerLaunchers(ctx, d, r.URL.Query().Get("refresh") == "1")
-			if err == nil {
-				unavailable = s.mainChatUnavailable(ctx, mid, all, list, s.requestLang(r)) // and what it can't run, with why (#5033)
-			}
+			all, list, unavailable, err = s.assistantPickerLaunchers(ctx, d, r.URL.Query().Get("refresh") == "1", s.requestLang(r))
 		} else {
 			list, err = s.pickerLaunchersOn(ctx, mid, host)
 			list = slices.DeleteFunc(list, func(l ConfiguredLauncher) bool {
