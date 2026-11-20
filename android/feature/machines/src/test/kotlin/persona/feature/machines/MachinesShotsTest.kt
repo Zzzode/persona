@@ -103,7 +103,7 @@ class MachinesShotsTest {
     private val management = object : MachineManagement {
         override suspend fun launchers(machineId: String) = listOf(
             AgentLauncher("claude", model = "anthropic/claude-opus-5"), AgentLauncher("codex"),
-            AgentLauncher("traex", agentType = "traex"),
+            JsonCodec.decodeFromString<AgentLauncher>("""{"name":"traex","base_url":"(traex)"}"""),
         )
         override suspend fun launcherQuota(machineId: String, name: String, refresh: Boolean) = LauncherQuotaAnswer()
         override suspend fun reconnect(machineId: String) = Unit

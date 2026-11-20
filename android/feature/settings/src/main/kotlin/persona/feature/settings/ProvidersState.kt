@@ -32,8 +32,8 @@ internal data class ProviderGroups(val managed: List<HubLauncher>, val zshrc: Li
 }
 
 internal val HubLauncher.settingsTitle: String
-    get() = when (harness) {
-        "traex", "traecli" -> title
+    get() = when {
+        name == "traex" || harness == "traex" || harness == "traecli" -> title
         else -> name
     }
 

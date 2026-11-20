@@ -217,7 +217,7 @@ data class AgentLauncher(
     val source: String? = null,
 ) {
     /** What people read for it: its display name, else its startup name (the web's `providerTitle`). */
-    val title: String get() = launcherTitle(name, agentType, displayName?.trim()?.takeIf(String::isNotEmpty))
+    val title: String get() = launcherTitle(name, agentType, displayName?.trim()?.takeIf(String::isNotEmpty), baseUrl, source)
 }
 
 /**
@@ -300,12 +300,19 @@ data class UnavailableLauncher(
     val title: String get() = launcherTitle(name, agent, displayName?.trim()?.takeIf(String::isNotEmpty))
 }
 
-internal fun launcherTitle(name: String, agent: String?, displayName: String?): String = when {
-    agent == PaseoAgent && (name == "traecli" || name == "trae-cli") -> unknownAgentName(agent, displayName, name)
-    (agent == "traex" || agent == "traecli" || agent == "trae-cli") &&
-        (name == "traex" || name == "traecli" || name == "trae-cli") &&
-        (displayName == null || isTraeCliLabel(displayName)) -> TraeCliDisplayName
-    else -> displayName ?: name
+internal fun launcherTitle(
+    name: String, agent: String?, displayName: String?, baseUrl: String? = null, source: String? = null,
+): String {
+    // Older hubs identify the built-in launcher by its base URL marker before supplying an agent field.
+    val legacyMachineCli = name == "traex" && baseUrl == "(traex)" &&
+        (source.isNullOrEmpty() || source == "path" || source == "zshrc" || source == "builtin")
+    return when {
+        agent == PaseoAgent && (name == "traecli" || name == "trae-cli") -> unknownAgentName(agent, displayName, name)
+        (legacyMachineCli || agent == "traex" || agent == "traecli" || agent == "trae-cli") &&
+            (name == "traex" || name == "traecli" || name == "trae-cli") &&
+            (displayName == null || isTraeCliLabel(displayName)) -> TraeCliDisplayName
+        else -> displayName ?: name
+    }
 }
 
 /**

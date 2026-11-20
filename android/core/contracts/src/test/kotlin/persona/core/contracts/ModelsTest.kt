@@ -154,6 +154,19 @@ class ModelsTest {
         assertEquals("Custom Claude", HubLauncher(name = "traex", displayName = "Custom Claude").title)
     }
 
+    @Test fun anOlderHubsBuiltinCliHasItsDisplayNameWithoutChangingAgentType() {
+        val raw = """{"name":"traex","base_url":"(traex)"}"""
+        val launcher = JsonCodec.decodeFromString<AgentLauncher>(raw)
+        val settings = JsonCodec.decodeFromString<HubLauncher>(raw)
+        assertEquals("traex", launcher.name)
+        assertEquals("claude", launcher.agentType)
+        assertEquals("TRAE CLI", launcher.title)
+        assertEquals("TRAE CLI", settings.title)
+        assertEquals("My CLI", launcher.copy(displayName = "My CLI").title)
+        assertEquals("traex", launcher.copy(source = "persona").title)
+        assertEquals("traex", launcher.copy(baseUrl = null).title)
+    }
+
     @Test fun aPaseoProviderIsNamedByItsOwnNameNeverTheEngines() {
         fun label(json: String) = JsonCodec.decodeFromString<Session>("""{"session_id":"paseo-1","agent":"paseo",$json}""").agentLabel
         // Paseo calls every provider but Claude Code and Codex "paseo" (#8143): the row's label, else its launcher.

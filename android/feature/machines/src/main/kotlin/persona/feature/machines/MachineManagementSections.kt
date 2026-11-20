@@ -183,8 +183,8 @@ internal fun LazyListScope.machineLaunchers(online: Boolean, state: MachineActio
     }
     itemsIndexed(launchers, key = { _, it -> "launcher-${it.name}" }, contentType = { _, _ -> "launcher" }) { index, launcher ->
         val model = launcherModel(launcher)
-        val title = when (launcher.agentType) {
-            "traex", "traecli" -> launcher.title
+        val title = when {
+            launcher.name == "traex" || launcher.agentType == "traex" || launcher.agentType == "traecli" -> launcher.title
             else -> launcher.name
         }
         JGroupItem(GroupPosition.of(index, launchers.size)) {
