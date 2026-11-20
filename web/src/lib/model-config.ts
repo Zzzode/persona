@@ -1,5 +1,5 @@
 import { t } from "../i18n";
-import { agentName, isTraeCli } from "./agent-kind";
+import { agentName, isTraeCli, normalizeTraeCliName } from "./agent-kind";
 import { MANAGER_HEADER } from "./manager-choice";
 import { api, enc } from "./api";
 import type { ProviderAPI, ProviderModel } from "./providers";
@@ -133,14 +133,12 @@ export const modelPurpose = (id: string, manager?: string) => api<ModelPurposeBo
  *  set up, whose id means nothing to a person (docs/assistant/onboarding.md 4.5). */
 export function providerName(id: string | undefined, providers: ModelProvider[] = []): string | undefined {
   if (!id) return undefined;
-  const provider = providers.find((v) => v.id === id);
-  if (provider?.name) return modelProviderTitle(provider);
-  if (id === "launcher.traex") return agentName("traex");
-  return id.startsWith("legacy.") ? undefined : id;
+  const name = providers.find((v) => v.id === id)?.name || "";
+  return modelProviderTitle({ id, name }) || (id.startsWith("legacy.") ? undefined : id);
 }
 
 export function modelProviderTitle({ id, name }: Pick<ModelProvider, "id" | "name">): string {
-  return id === "launcher.traex" && (!name || isTraeCli(name)) ? agentName("traex") : name;
+  return id === "launcher.traex" ? normalizeTraeCliName(name || "traex") : name;
 }
 
 export function modelSummary(p: ModelPurpose, providers: ModelProvider[] = []): string {

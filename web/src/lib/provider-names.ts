@@ -6,7 +6,7 @@
 // the model configuration's providers (GET /model-config, whose `name` the hub sets to the display name), read once a
 // minute at most and shared by every place on the page.
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { agentName, isTraeCli } from "./agent-kind";
+import { isTraeCli, normalizeTraeCliName } from "./agent-kind";
 import { api } from "./api";
 import { MANAGER_HEADER } from "./manager-choice";
 
@@ -21,8 +21,8 @@ const shown = (l: Named) => l.display_name?.trim() ?? "";
 
 /** The name to show first: the display name, else the startup ID. */
 export function providerTitle(l: Named): string {
-  const name = shown(l);
-  return isTraeCli(l.name) && (!name || isTraeCli(name)) ? agentName(l.name) : name || l.name;
+  const name = shown(l) || l.name;
+  return isTraeCli(l.name) ? normalizeTraeCliName(name) : name;
 }
 
 /** The startup ID to show as secondary text (small monospace or a tooltip), or "" when the title already is the ID. */
