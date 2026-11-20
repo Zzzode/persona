@@ -123,13 +123,34 @@ func TestAgentExecutableKeepsSuccessfulShellLookupWithOpenChildOutput(t *testing
 	t.Setenv("SHELL", "/bin/zsh")
 	const name = "persona-test-agent-from-rc"
 	path := writeExecutable(t, filepath.Join(home, "custom agent", name), "#!/bin/sh\n")
-	writeFile(t, filepath.Join(home, ".zshrc"), "export PATH="+shellQuote(filepath.Dir(path))+":\"$PATH\"\n/bin/sleep 7 &!\n")
+	other := writeExecutable(t, filepath.Join(home, "other agent"), "#!/bin/sh\n")
+	exitBanner := shellQuote("printf '%s\\n' " + shellQuote(other))
+	writeFile(t, filepath.Join(home, ".zshrc"), "export PATH="+shellQuote(filepath.Dir(path))+":\"$PATH\"\n/bin/sleep 7 &!\ntrap "+exitBanner+" EXIT\n")
 	start := time.Now()
 	if got, err := agentExecutable(name); err != nil || got != path {
 		t.Fatalf("got %q %v, want %q", got, err, path)
 	}
 	if took := time.Since(start); took > 5*time.Second {
 		t.Fatalf("lookup waited %s for a child that held stdout open", took)
+	}
+}
+
+func TestAgentExecutableRejectsShellStartupPathWithoutLookup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses Unix shell process groups")
+	}
+	if _, err := exec.LookPath("zsh"); err != nil {
+		t.Skip("no zsh")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("ZDOTDIR", home)
+	t.Setenv("SHELL", "/bin/zsh")
+	const name = "persona-test-agent-missing-from-rc"
+	other := writeExecutable(t, filepath.Join(home, "other agent"), "#!/bin/sh\n")
+	writeFile(t, filepath.Join(home, ".zshrc"), "printf '%s\\n' "+shellQuote(other)+"\n/bin/sleep 7 &!\nexit 0\n")
+	if got, err := agentExecutable(name); got != "" || err == nil || !strings.Contains(err.Error(), "not found in PATH") {
+		t.Fatalf("shell exited before the lookup: got %q, error %v", got, err)
 	}
 }
 

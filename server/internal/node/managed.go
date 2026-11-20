@@ -399,19 +399,12 @@ func agentExecutable(bin string) (string, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	// ErrWaitDelay means command -v succeeded, but an rc child kept the output pipe open.
-	if out, err := launcherShellOutput(ctx, "command -v "+shellQuote(bin)); err == nil || errors.Is(err, exec.ErrWaitDelay) {
-		lines := strings.Split(strings.TrimSpace(terminalEscapes.ReplaceAllString(string(out), "")), "\n")
-		for i := len(lines) - 1; i >= 0; i-- {
-			line := strings.TrimSpace(lines[i])
-			if filepath.IsAbs(line) {
-				if st, err := os.Stat(line); err == nil && !st.IsDir() && (st.Mode().Perm()&0111 != 0 || runtime.GOOS == "windows") {
-					agentExecutableMu.Lock()
-					agentExecutableCache[bin] = line
-					agentExecutableMu.Unlock()
-					return line, nil
-				}
-			}
+	if path := shellAgentPath(ctx, bin); path != "" {
+		if st, err := os.Stat(path); err == nil && !st.IsDir() && (st.Mode().Perm()&0111 != 0 || runtime.GOOS == "windows") {
+			agentExecutableMu.Lock()
+			agentExecutableCache[bin] = path
+			agentExecutableMu.Unlock()
+			return path, nil
 		}
 	}
 
@@ -422,6 +415,24 @@ func agentExecutable(bin string) (string, error) {
 	}
 
 	return "", fmt.Errorf("%s not found in PATH or the usual install locations (node service environment; add its bin directory to PATH and restart the node, or symlink into ~/.local/bin)", bin)
+}
+
+func shellAgentPath(ctx context.Context, bin string) string {
+	const begin, end = "\x01persona-agent-path-begin\x01", "\x01persona-agent-path-end\x01"
+	script := `if __persona_agent_path=$(builtin command -v ` + shellQuote(bin) + `); then
+  builtin printf '\001persona-agent-path-begin\001%s\001persona-agent-path-end\001' "$__persona_agent_path"
+fi`
+	out, err := launcherShellOutput(ctx, script)
+	if err != nil && !errors.Is(err, exec.ErrWaitDelay) {
+		return ""
+	}
+	// An rc child can hold stdout open even when the lookup never ran. Require its completed result.
+	_, body, began := strings.Cut(string(out), begin)
+	path, _, ended := strings.Cut(body, end)
+	if !began || !ended || strings.ContainsAny(path, "\r\n") || !filepath.IsAbs(path) {
+		return ""
+	}
+	return path
 }
 
 func claudeExecutable() (string, error) { return agentExecutable("claude") }
