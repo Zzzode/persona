@@ -61,6 +61,35 @@ func TestMainChatPickerListsOnlyWhatRunsTheAssistant(t *testing.T) {
 	}
 }
 
+func TestMainChatPickerForwardsAnExplicitRefresh(t *testing.T) {
+	s, f := mainChatFixture(t)
+	f.mu.Lock()
+	start := len(f.calls)
+	f.mu.Unlock()
+	for _, refresh := range []string{"", "&refresh=1"} {
+		r := request(s, "GET", "/api/v1/machines/server/launchers?purpose=assistant"+refresh, "")
+		if r.Code != 200 {
+			t.Fatalf("picker response: %d %s", r.Code, r.Body.String())
+		}
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	var refreshes []bool
+	for _, call := range f.calls[start:] {
+		if call.Method != DeviceLaunchersList {
+			continue
+		}
+		var params struct{ Refresh bool }
+		if err := json.Unmarshal(call.Params, &params); err != nil {
+			t.Fatal(err)
+		}
+		refreshes = append(refreshes, params.Refresh)
+	}
+	if !slices.Equal(refreshes, []bool{false, true}) {
+		t.Fatalf("launcher_list refresh flags = %v, want [false true]", refreshes)
+	}
+}
+
 func TestMainChatPickerUsesKnownProvidersDuringShellTimeout(t *testing.T) {
 	s, f := mainChatFixture(t)
 	putLaunchers(t, s, storedLauncher{ManagedLauncher: proto.ManagedLauncher{Name: "gw", Model: "m1", OwnService: "skip"}})

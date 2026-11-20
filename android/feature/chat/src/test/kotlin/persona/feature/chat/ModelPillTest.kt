@@ -126,6 +126,7 @@ class ModelPillTest {
     /** Records what the pill asks the hub. */
     private open class Hub : AssistantManagement {
         val asked = mutableListOf<String>()
+        val launcherListRefreshes = mutableListOf<Boolean>()
         var launcherListReads = 0
             private set
         override suspend fun config() = AssistantConfig(machineId = "box", launcher = "claude", main = "main")
@@ -133,6 +134,10 @@ class ModelPillTest {
             launcherListReads++
             return AssistantLaunchers(
                 listOf(AgentLauncher("claude"), AgentLauncher("team", displayName = "Team API")), LauncherDefault("claude", "opus", "high"))
+        }
+        override suspend fun assistantLauncherList(machineId: String, refresh: Boolean): AssistantLaunchers {
+            launcherListRefreshes += refresh
+            return assistantLauncherList(machineId)
         }
         override suspend fun launcherModels(machineId: String, launcher: String) = when (launcher) {
             "claude" -> LauncherModels("claude", listOf(AgentModel("default", "Default", resolved = "claude-opus-5-5", isDefault = true),
@@ -201,7 +206,7 @@ class ModelPillTest {
         rule.runOnIdle { retry.complete(Unit) }
         waitForDialogText("Sonnet 4.5")
         rule.onNode(hasDialogText("Retry"), useUnmergedTree = true).assertDoesNotExist()
-        assertEquals(2, hub.launcherListReads)
+        rule.runOnIdle { assertEquals(listOf(false, true), hub.launcherListRefreshes) }
     }
 
     @Test fun openingTheAssistantModelSheetRetriesAFailedPrefetch() {
@@ -222,7 +227,7 @@ class ModelPillTest {
         rule.onNodeWithTag("model-pill").performClick()
         waitForDialogText("Loading models…")
         rule.runOnIdle {
-            assertEquals(2, hub.launcherListReads)
+            assertEquals(listOf(false, true), hub.launcherListRefreshes)
             retry.complete(Unit)
         }
         waitForDialogText("Sonnet 4.5")
@@ -245,6 +250,7 @@ class ModelPillTest {
         rule.waitUntil(5_000) { hub.launcherListReads == 2 }
         rule.runOnIdle { refresh.completeExceptionally(SocketTimeoutException()) }
         waitForDialogText("Retry")
+        rule.runOnIdle { assertEquals(listOf(false, false), hub.launcherListRefreshes) }
         rule.onNodeWithTag("model-panel-list").performScrollToNode(hasText("Sonnet 4.5"))
         rule.onNode(hasDialogText("Sonnet 4.5"), useUnmergedTree = true).assertExists()
         rule.onNode(hasDialogText("Loading models…"), useUnmergedTree = true).assertDoesNotExist()

@@ -114,10 +114,10 @@ exit 1
 	}
 	const requests = 5
 	ready, done := make(chan struct{}), make(chan answer, requests)
-	for range requests {
+	for request := range requests {
 		go func() {
 			ready <- struct{}{}
-			list, err := n.launchers(t.Context())
+			list, err := n.launchers(t.Context(), request%2 == 0)
 			done <- answer{list, err}
 		}()
 	}

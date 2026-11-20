@@ -893,7 +893,7 @@ func (n *Node) handle(ctx context.Context, method string, params json.RawMessage
 		MessageSource    *proto.MessageSource          `json:"message_source"`
 		ClientMsgID      string                        `json:"client_msg_id"`
 		AtItemID         string                        `json:"at_item_id"`     // session.fork: the reply to branch off at
-		Refresh          bool                          `json:"refresh"`        // launchers.models: ask again, not the kept list
+		Refresh          bool                          `json:"refresh"`        // launchers.list and launchers.models: ask again
 		Purpose          string                        `json:"purpose"`        // launchers.models/check: assistant runs outside the Agent engine
 		AssistantTurn    bool                          `json:"assistant_turn"` // launchers.check: shaped as an assistant turn (launchercheck_assistant.go)
 		Conversation     string                        `json:"conversation"`   // launchers.check with assistant_turn: the conversation whose profile it runs in
@@ -1281,7 +1281,7 @@ func (n *Node) handle(ctx context.Context, method string, params json.RawMessage
 				return map[string]any{"launchers": typedLaunchers(ls), "host": p.Host, "host_runtime": true}, nil
 			}
 		}
-		ls, err := n.launchers(ctx)
+		ls, err := n.launchers(ctx, p.Refresh)
 		bl := n.runtimes.launchers()
 		if len(bl) > 0 {
 			// Explicit shell launchers keep their names; a discovered CLI fallback yields to its connected runtime.

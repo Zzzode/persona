@@ -407,9 +407,9 @@ fun PersonaModelPill(
     LaunchedEffect(management) {
         try { config = management?.config() } catch (cancelled: CancellationException) { throw cancelled } catch (_: Exception) { }
     }
-    fun readCatalog() {
+    fun readCatalog(refresh: Boolean = false) {
         val api = management ?: return
-        if (machineId.isNotBlank()) lists.readAssistantCatalog(machineId) { api.assistantLauncherList(machineId) }
+        if (machineId.isNotBlank()) lists.readAssistantCatalog(machineId) { api.assistantLauncherList(machineId, refresh) }
     }
     fun readModels(provider: String, again: Boolean = false) {
         val api = management ?: return
@@ -420,7 +420,10 @@ fun PersonaModelPill(
         readCatalog()
     }
     LaunchedEffect(management, machineId, open) {
-        if (open) readCatalog()
+        if (open) {
+            val previous = lists.assistantCatalog(machineId)
+            readCatalog(refresh = previous is JLoadable.Failed || previous is JLoadable.Loaded && previous.failure != null)
+        }
     }
     val kept = PersonaModelPanel.MODEL_PICK in features
     val shownSession = session?.let { s -> drawn?.takeIf { it.rev == s.rev }?.let { s.copy(modelPick = it.pick) } ?: s }
@@ -488,7 +491,7 @@ fun PersonaModelPill(
             catalog is JLoadable.Failed -> catalog.copy(title = stringResource(R.string.chat_conversation_models_failed))
             else -> catalog
         },
-        onRetryCatalog = if (machineId.isNotBlank()) ::readCatalog else null)
+        onRetryCatalog = if (machineId.isNotBlank()) ({ readCatalog(refresh = true) }) else null)
 }
 
 /** The strip on top of a Persona chat's panel (the web's `PickStrip`): where the setup comes from and, for a pick, the way back. */

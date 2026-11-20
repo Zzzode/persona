@@ -303,7 +303,7 @@ func (s *Service) assistantPickerLaunchers(ctx context.Context, d Device, refres
 		}
 	} else {
 		var listing launcherListing
-		listing, syncErr = s.listLaunchers(ctx, d)
+		listing, syncErr = s.listLaunchers(ctx, d, refresh)
 		if syncErr != nil {
 			if ctx.Err() != nil || apierr.NodeCode(syncErr) != "timeout" {
 				return nil, nil, nil, syncErr

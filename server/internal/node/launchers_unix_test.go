@@ -4,6 +4,7 @@ package node
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -111,7 +112,7 @@ func TestLaunchersKeepTheLastListWhenTheShellEndsBeforeListing(t *testing.T) {
 		launcherCache.at = time.Time{}
 		launcherCache.Unlock()
 	}
-	n := &Node{}
+	n, _ := runtimeNode(t)
 	ctx := context.Background()
 	ending := "echo 'Welcome back'\nexit 1\n"
 
@@ -136,5 +137,21 @@ func TestLaunchersKeepTheLastListWhenTheShellEndsBeforeListing(t *testing.T) {
 	}
 	if !n.knownLauncher(ctx, "mycc") {
 		t.Error("mycc is unknown after a read that ended before listing; want it still known")
+	}
+
+	write("alias recovered='claude --model new-model'\n")
+	if got := launchersFor(t, n, "").names(); !slices.Contains(got, "mycc/") || slices.Contains(got, "recovered/zshrc") {
+		t.Fatalf("ordinary launcher list after fallback = %v, want cached mycc", got)
+	}
+	raw, err := nodeCall(t, n, "launchers.list", map[string]any{"refresh": true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var refreshed listedLaunchers
+	if err := json.Unmarshal(raw, &refreshed); err != nil {
+		t.Fatal(err)
+	}
+	if got := refreshed.names(); !slices.Contains(got, "recovered/zshrc") || slices.Contains(got, "mycc/") {
+		t.Fatalf("refreshed launcher list = %v, want recovered without mycc", got)
 	}
 }

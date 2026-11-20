@@ -92,33 +92,50 @@ func launcherOutput(out string) (string, bool) {
 // launchers lists the launchers of this machine's login shell: the `_claude_launchers` helper's (claude wrapper
 // functions), then every alias that runs claude (`alias dmcc="ANTHROPIC_BASE_URL=… claude …"`), by name. A name
 // the helper lists is not repeated; none at all: plain claude.
-func (n *Node) launchers(ctx context.Context) ([]proto.Launcher, error) {
-	if list := freshLauncherList(); list != nil {
-		return list, nil
-	}
-	result, err, _ := launcherCache.fetch.Do("shell", func() (any, error) {
-		// A scan may have completed between the first cache read and entry into the group.
+func (n *Node) launchers(ctx context.Context, refresh ...bool) ([]proto.Launcher, error) {
+	force := len(refresh) > 0 && refresh[0]
+	if !force {
 		if list := freshLauncherList(); list != nil {
 			return list, nil
+		}
+	}
+	type discovery struct {
+		list      []proto.Launcher
+		fromCache bool
+	}
+	read := func() (any, error) {
+		// A scan may have completed between the first cache read and entry into the group.
+		if !force {
+			if list := freshLauncherList(); list != nil {
+				return discovery{list: list, fromCache: true}, nil
+			}
 		}
 		// A caller can give up before the shell finishes. The scan still updates the cache for the next ask.
 		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
 		defer cancel()
 		out, err := scanLaunchers(ctx)
 		if err != nil {
-			return lastLaunchers(err)
+			list, err := lastLaunchers(err)
+			return discovery{list: list}, err
 		}
 		list, codex, settings, scripts := mergeLaunchers(string(out))
 		launcherCache.Lock()
 		launcherCache.at, launcherCache.list, launcherCache.codex, launcherCache.settings = time.Now(), list, codex, settings
 		launcherCache.scripts = scripts
 		launcherCache.Unlock()
-		return list, nil
-	})
-	if err != nil {
-		return nil, err
+		return discovery{list: list}, nil
 	}
-	return result.([]proto.Launcher), nil
+	for {
+		result, err, _ := launcherCache.fetch.Do("shell", read)
+		if err != nil {
+			return nil, err
+		}
+		got := result.(discovery)
+		// A forced request can share another scan, but a cache-only read still needs a scan.
+		if !force || !got.fromCache {
+			return got.list, nil
+		}
+	}
 }
 
 func freshLauncherList() []proto.Launcher {
