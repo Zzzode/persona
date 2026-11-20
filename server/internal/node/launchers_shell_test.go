@@ -62,13 +62,20 @@ func TestConcurrentLaunchersShareFailedShellScan(t *testing.T) {
 	if _, err := exec.LookPath("zsh"); err != nil {
 		t.Skip("no zsh")
 	}
+	refreshFinished := func() bool {
+		launcherCache.Lock()
+		defer launcherCache.Unlock()
+		return !launcherCache.fetching
+	}
+	waitFor(t, "previous background launcher refresh", refreshFinished)
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("ZDOTDIR", home)
 	t.Setenv("SHELL", "/bin/zsh")
+	stale := []proto.Launcher{{Name: "stale"}}
 	launcherCache.Lock()
 	oldAt, oldList, oldCodex, oldSettings, oldScripts := launcherCache.at, launcherCache.list, launcherCache.codex, launcherCache.settings, launcherCache.scripts
-	launcherCache.at, launcherCache.list = time.Time{}, nil
+	launcherCache.at, launcherCache.list = time.Now().Add(-2*time.Minute), stale
 	launcherCache.Unlock()
 	t.Cleanup(func() {
 		launcherCache.Lock()
@@ -80,8 +87,27 @@ func TestConcurrentLaunchersShareFailedShellScan(t *testing.T) {
 	writeFile(t, rc, recordStart+`while [ ! -f "$HOME/release" ]; do /bin/sleep 0.02; done
 exit 1
 `)
-	t.Cleanup(func() { _ = os.WriteFile(release, nil, 0o600) })
+	t.Cleanup(func() {
+		_ = os.WriteFile(release, nil, 0o600)
+		waitFor(t, "background launcher refresh cleanup", refreshFinished)
+	})
 	n := &Node{}
+	readCached := func() []proto.Launcher {
+		t.Helper()
+		done := make(chan []proto.Launcher, 1)
+		go func() { done <- n.cachedLaunchers() }()
+		select {
+		case list := <-done:
+			return list
+		case <-time.After(2 * time.Second):
+			t.Fatal("cached launcher list waited for the shell")
+			return nil
+		}
+	}
+	if got := readCached(); !slices.Equal(got, stale) {
+		t.Fatalf("cached launcher list at refresh start = %v, want %v", got, stale)
+	}
+	waitFor(t, "launcher scan startup", func() bool { _, err := os.Stat(started); return err == nil })
 	const requests = 5
 	ready, done := make(chan struct{}), make(chan error, requests)
 	for range requests {
@@ -94,7 +120,11 @@ exit 1
 	for range requests {
 		<-ready
 	}
-	waitFor(t, "launcher scan startup", func() bool { _, err := os.Stat(started); return err == nil })
+	for range requests {
+		if got := readCached(); !slices.Equal(got, stale) {
+			t.Fatalf("cached launcher list during refresh = %v, want %v", got, stale)
+		}
+	}
 	// All callers have reached the call site. Let them join the running scan before allowing it to fail.
 	time.Sleep(100 * time.Millisecond)
 	writeFile(t, release, "")
@@ -109,6 +139,7 @@ exit 1
 			t.Fatal("launcher requests did not return after the shell exited")
 		}
 	}
+	waitFor(t, "failed background launcher refresh", refreshFinished)
 	if starts, err := os.ReadFile(started); err != nil || string(starts) != "start\n" {
 		t.Fatalf("concurrent calls started %q, %v", starts, err)
 	}
@@ -118,6 +149,9 @@ exit 1
 		if err != nil || byName(list)["retry_test"].Model != "model-a" {
 			t.Fatalf("a new call should retry and cache the recovered launchers: %+v, %v", list, err)
 		}
+	}
+	if list := readCached(); byName(list)["retry_test"].Model != "model-a" {
+		t.Fatalf("cached launcher list after recovery = %+v", list)
 	}
 	if starts, err := os.ReadFile(started); err != nil || string(starts) != "start\nstart\n" {
 		t.Fatalf("retry and cache should run the shell once more: %q, %v", starts, err)
