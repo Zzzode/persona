@@ -55,7 +55,11 @@ func shortModel(value string) string {
 }
 
 var aliases = map[string]string{"claude-code": "claude", "claudecode": "claude", "codex-cli": "codex", "gemini-cli": "gemini", "cursor-agent": "cursor", "pi-web": "pi", "trae-cli": "trae", "traecli": "trae"}
-var names = map[string]string{"claude": "Claude Code", "codex": "Codex", "opencode": "OpenCode", "pi": "pi", "gemini": "Gemini CLI", "cursor": "Cursor", "trae": "Trae"}
+var names = map[string]string{
+	"claude": "Claude Code", "codex": "Codex", "opencode": "OpenCode", "pi": "pi",
+	"gemini": "Gemini CLI", "cursor": "Cursor", "trae": "Trae",
+	"traex": "TraeCLI", "traecli": "TraeCLI", "trae-cli": "TraeCLI",
+}
 
 // Document uses complete immutable rows, not the 180-character list summaries.
 func Document(item sessionlist.Item) (sessionlist.SearchDocument, error) {
@@ -96,7 +100,7 @@ func Document(item sessionlist.Item) (sessionlist.SearchDocument, error) {
 	}
 	labelAgent := first(agent, row.Launcher)
 	labelID := strings.ToLower(labelAgent)
-	if normalized, ok := aliases[labelID]; ok {
+	if normalized, ok := aliases[labelID]; ok && names[labelID] == "" {
 		labelID = normalized
 	}
 	if labelID == "" {

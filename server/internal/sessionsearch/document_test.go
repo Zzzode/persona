@@ -104,6 +104,33 @@ func TestDocumentUsesFullFieldsAndDoesNotInventTranscript(t *testing.T) {
 	}
 }
 
+func TestSearchFindsTraeCLIByDisplayName(t *testing.T) {
+	var items []sessionlist.Item
+	for agent, harness := range map[string]string{"traex": "traex", "traecli": "trae", "trae-cli": "trae"} {
+		row := proto.Session{MachineID: "computer", SessionID: agent, Agent: agent, State: "idle"}
+		item := sessionlist.Item{ID: agent, Machine: row.MachineID, State: row.State, Full: row, Summary: row}
+		doc, err := Document(item)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if doc.HarnessLabel != "TraeCLI" || doc.Harness != harness {
+			t.Errorf("agent %q has label %q and harness %q", agent, doc.HarnessLabel, doc.Harness)
+		}
+		items = append(items, item)
+	}
+	var index sessionlist.Index
+	index.Replace("fixture", items)
+	for _, query := range []string{"TraeCLI", "harness:TraeCLI"} {
+		page, err := index.Query(sessionlist.Options{Search: query, SearchContext: &sessionlist.SearchContext{Document: Document}, Limit: 10})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page.Sessions) != len(items) {
+			t.Errorf("%q got %d sessions, want %d", query, len(page.Sessions), len(items))
+		}
+	}
+}
+
 func BenchmarkRuntimeSearch8000(b *testing.B) {
 	var items []sessionlist.Item
 	for n := range 8000 {
