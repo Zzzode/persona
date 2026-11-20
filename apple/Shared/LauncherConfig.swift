@@ -76,8 +76,8 @@ nonisolated struct LauncherView: Codable, Identifiable, Hashable, Sendable {
     var id: String { name }
     /// What a person reads: its display name, the built-in CLI's name on older hubs, or the startup name.
     var title: String {
-        if let displayName, !displayName.trimmingCharacters(in: .whitespaces).isEmpty { return displayName }
-        return Launcher.legacyTraeCLITitle(name: name, source: source, agent: agent, baseURL: baseURL) ?? name
+        let label = displayName.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 }
+        return Launcher.traeCLITitle(name: name, source: source, agent: agent, baseURL: baseURL, displayName: label) ?? label ?? name
     }
     var managed: Bool { source == "persona" || source == LegacyNames.product }
     /// A wrapper script on a computer's PATH (#5954) rather than a ~/.zshrc function.

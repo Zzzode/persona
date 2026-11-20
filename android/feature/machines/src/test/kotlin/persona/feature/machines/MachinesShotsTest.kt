@@ -150,7 +150,7 @@ class MachinesShotsTest {
             rule.onNodeWithText(if (d) detail else listTitle).assertExists()
             if (d) {
                 rule.onNodeWithText(botmux).assertExists()
-                rule.onNodeWithText("TraeCLI").assertExists()
+                rule.onNodeWithText("TRAE CLI").assertExists()
             } else {
                 rule.onNodeWithText(offline).assertExists()
                 rule.onNodeWithText(mac.error!!).assertExists() // the hub's own words stay, after the plain ones

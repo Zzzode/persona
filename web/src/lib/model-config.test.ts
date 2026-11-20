@@ -24,12 +24,12 @@ const providers: ModelProvider[] = [
 afterEach(() => vi.unstubAllGlobals());
 
 describe("用途配置", () => {
-  it("displays the built-in TraeCLI provider without changing its saved ID or custom names", () => {
+  it("displays the built-in TRAE CLI provider without changing its saved ID or custom names", () => {
     const provider = { id: "launcher.traex", name: "traex", kind: "launcher" as const };
-    expect(modelProviderTitle(provider)).toBe("TraeCLI");
-    expect(providerName(provider.id)).toBe("TraeCLI");
+    expect(modelProviderTitle(provider)).toBe("TRAE CLI");
+    expect(providerName(provider.id)).toBe("TRAE CLI");
     expect(providerName(provider.id, [{ ...provider, name: "Team relay" }])).toBe("Team relay");
-    expect(runtimeLabel("cli", "traex")).toBe("TraeCLI");
+    expect(runtimeLabel("cli", "traex")).toBe("TRAE CLI");
   });
 
   it("uses overrides for editing, never silently fixes a missing provider", () => {

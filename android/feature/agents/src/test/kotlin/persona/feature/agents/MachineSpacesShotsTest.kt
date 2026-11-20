@@ -181,7 +181,7 @@ class MachineSpacesShotsTest {
         rule.runOnIdle { machineId = "quiet"; dark = true }
         rule.onNodeWithText("Spare desktop").assertIsDisplayed()
         rule.onNodeWithText("Online").assertIsDisplayed()
-        rule.onNodeWithText("Start Claude, Codex, or TraeCLI in herdr on this machine and it shows up here.").assertIsDisplayed()
+        rule.onNodeWithText("Start Claude, Codex, or TRAE CLI in herdr on this machine and it shows up here.").assertIsDisplayed()
         capture("machine-projects-empty")
     }
 

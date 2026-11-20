@@ -1,5 +1,5 @@
 import { t } from "../i18n";
-import { agentId, agentName, sessionAgent } from "./agent-kind";
+import { agentId, agentName, isTraeCli, sessionAgent } from "./agent-kind";
 import { modelShort } from "./context-usage";
 import { baseName, failureReason, sessionPreview, sessionTitle, stateOf } from "./format";
 import { machineWithHub } from "./mesh";
@@ -130,6 +130,12 @@ export function sessionHarnessId(s: Session): string {
 export function sessionHarnessLabel(s: Session): string {
   const { agent, label } = sessionAgent(s);
   return agentName(agent || s.launcher, label || s.agent_name);
+}
+
+/** Search can also use the CLI's single-word executable, including in a harness operator. */
+function searchableHarnessLabel(s: Session): string {
+  const label = sessionHarnessLabel(s);
+  return isTraeCli(label) ? `${label} · traecli` : label;
 }
 
 /** Normalized project name for a session (from repo_root, space_name, workspace_cwd, or cwd). */
@@ -336,7 +342,7 @@ export function scopeHaystacks(s: Session, scope: SearchScope, ctx: EvalContext)
   const errText = [s.start_error, s.turn_error, failureReason(s), s.attention_reason, s.work?.phase === "blocked" ? s.work.line : ""]
     .filter(Boolean)
     .join(" · ");
-  const meta = [s.cwd, s.repo_root, s.branch, s.space_name, s.slot_name, sessionHarnessLabel(s), sessionModelId(s), s.activity]
+  const meta = [s.cwd, s.repo_root, s.branch, s.space_name, s.slot_name, searchableHarnessLabel(s), sessionModelId(s), s.activity]
     .filter(Boolean)
     .join(" · ");
 
@@ -494,7 +500,7 @@ export function compileSearchAsCode(
     clauses.push(list.length === 1 ? `s.harness === ${JSON.stringify(list[0])}` : `${JSON.stringify(list)}.includes(s.harness)`);
     predicates.push((s) => {
       const hid = sessionHarnessId(s).toLowerCase();
-      const hlabel = sessionHarnessLabel(s).toLowerCase();
+      const hlabel = searchableHarnessLabel(s).toLowerCase();
       return list.some((target) => hid.includes(target) || hlabel.includes(target));
     });
   }

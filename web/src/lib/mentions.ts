@@ -5,7 +5,7 @@
 // <persona-context> before the message). No DOM here.
 
 import { t } from "../i18n";
-import { agentName, isTraeCli } from "./agent-kind";
+import { traeCliName } from "./agent-kind";
 import { baseName, shortPath } from "./format";
 import type { Item, Session } from "./types";
 import { byTime } from "./times";
@@ -89,12 +89,11 @@ export function byPrefix<T>(rows: T[], name: (t: T) => string, filter: string): 
   return [...head, ...rows.filter((r) => !name(r).toLowerCase().startsWith(f))];
 }
 
-/** Who answers in a session ("Claude" / "Codex" / "TraeCLI" / a runtime's own name; Session.agentLabel). */
+/** Who answers in a session ("Claude" / "Codex" / "TRAE CLI" / a runtime's own name; Session.agentLabel). */
 export function agentLabel(s: Pick<Session, "agent" | "agent_label" | "source_kind">): string {
   if (s.agent === "codex" || s.source_kind === "codex_app_server" || s.source_kind === "codex_history") return "Codex";
-  if (isTraeCli(s.agent)) return agentName(s.agent);
   if (!s.agent || s.agent === "claude") return "Claude";
-  return isTraeCli(s.agent_label) ? agentName(s.agent_label) : s.agent_label || s.agent;
+  return traeCliName(s.agent) || traeCliName(s.agent_label) || s.agent_label || s.agent;
 }
 
 /** A session's folder by its name: "app" for /home/me/code/app, and for C:\Users\me\code\app, a Windows computer's path

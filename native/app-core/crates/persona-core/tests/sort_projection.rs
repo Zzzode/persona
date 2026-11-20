@@ -10,13 +10,13 @@ use persona_core::sort::{Input, Session};
 use serde_json::Value;
 
 #[test]
-fn traecli_has_one_display_name_for_both_identifiers() {
-    for agent in ["traex", "traecli"] {
+fn traecli_has_one_display_name_for_existing_identifiers() {
+    for agent in ["traex", "traecli", "trae-cli"] {
         let session = Session {
             agent: Some(agent.to_owned()),
             ..Session::default()
         };
-        assert_eq!(session.agent_label(), "TraeCLI");
+        assert_eq!(session.agent_label(), "TRAE CLI");
     }
 }
 

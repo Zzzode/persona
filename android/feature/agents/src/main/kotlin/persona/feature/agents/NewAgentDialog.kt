@@ -476,7 +476,7 @@ internal fun startable(state: NewAgentState, machines: List<Machine>): Boolean =
 internal fun String.agentLabel() = when (this) {
     "claude" -> "Claude Code"
     "codex" -> "Codex"
-    "traex", "traecli" -> "TraeCLI"
+    "traex", "traecli" -> "TRAE CLI"
     else -> this
 }
 

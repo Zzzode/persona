@@ -60,7 +60,7 @@ nonisolated struct AgentKind: Equatable, Sendable {
         }
     }
 
-    /// The mark of an agent known by `name`, a provider's label or id ("TRAE", "TraeCLI", "trae-cli"), with case, spaces,
+    /// The mark of an agent known by `name`, a provider's label or id ("TRAE", "TRAE CLI", "trae-cli"), with case, spaces,
     /// hyphens and underscores ignored; nil for one the app has no mark for.
     static func brand(named name: String?) -> String? {
         guard let name else { return nil }

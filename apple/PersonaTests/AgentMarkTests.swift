@@ -30,7 +30,7 @@ struct AgentMarkTests {
         for id in ["traex", "traecli", "trae-cli"] {
             let session = Self.session(",\"agent\":\"\(id)\"")
             let mark = AgentKind(session)
-            #expect(session.agentLabel == "TraeCLI" && mark.name == "TraeCLI" && mark.letter == "T")
+            #expect(session.agentLabel == "TRAE CLI" && mark.name == "TRAE CLI" && mark.letter == "T")
             #expect(mark.brand == (id == "traex" ? nil : Theme.Brand.trae))
         }
         let dsh = AgentKind(Self.session(#","agent":"dsh","agent_label":"DSH""#))
@@ -38,8 +38,14 @@ struct AgentMarkTests {
     }
 
     @Test func namesTheBuiltinLauncherOnOlderHubs() {
-        #expect(Launcher(name: "traex", baseURL: "(traex)").title == "TraeCLI")
-        #expect(Launcher(name: "traex", agent: "traex", source: "path").title == "TraeCLI")
+        #expect(Launcher(name: "traex", baseURL: "(traex)").title == "TRAE CLI")
+        for displayName in [nil, "TRAEX", "TraeCLI"] as [String?] {
+            let launcher = Launcher(name: "traex", displayName: displayName, agent: "traex", source: "path")
+            #expect(launcher.title == "TRAE CLI")
+            #expect(LauncherChoices.shown([launcher], query: "TRAE CLI") == [launcher])
+            let stored = LauncherView(name: "traex", source: "path", displayName: displayName, agent: "traex")
+            #expect(stored.title == "TRAE CLI")
+        }
         #expect(Launcher(name: "traex", displayName: "My CLI", agent: "traex").title == "My CLI")
         #expect(Launcher(name: "team-cli", agent: "traex").title == "team-cli")
         #expect(Launcher(name: "traex", agent: "paseo", source: "paseo").title == "traex")
@@ -49,11 +55,11 @@ struct AgentMarkTests {
         let menu = MessageMenu()
         menu.session = { Self.session(#","agent":"traex""#) }
         let legacy = menu.shareMessage(text: "Example", isUser: false, date: nil)
-        #expect(legacy.agent == "TraeCLI" && legacy.showsTerminalMark)
+        #expect(legacy.agent == "TRAE CLI" && legacy.showsTerminalMark)
 
         menu.session = { Self.session(#","agent":"traecli""#) }
         let cli = menu.shareMessage(text: "Example", isUser: false, date: nil)
-        #expect(cli.agent == "TraeCLI" && !cli.showsTerminalMark)
+        #expect(cli.agent == "TRAE CLI" && !cli.showsTerminalMark)
     }
 
     /// A Paseo provider that is neither Claude Code nor Codex (`agent` "paseo", #8144): named by its label, else its
@@ -66,10 +72,10 @@ struct AgentMarkTests {
         #expect(engine.brand == Theme.Brand.grok && engine.name == "grok")
         #expect(AgentKind(Self.session(#","agent":"paseo","launcher":"kimi""#)).name == "kimi")
         // TRAE by its label, or by its launcher when the row names only the engine.
-        for label in ["Trae CLI", "Paseo"] {
+        for label in ["Trae CLI", "TRAEX", "TraeCLI", "Paseo"] {
             let session = Self.session(",\"agent\":\"paseo\",\"agent_label\":\"\(label)\",\"launcher\":\"traecli\"")
             let mark = AgentKind(session)
-            #expect(session.agentLabel == "TraeCLI" && mark.name == "TraeCLI" && mark.brand == Theme.Brand.trae)
+            #expect(session.agentLabel == "TRAE CLI" && mark.name == "TRAE CLI" && mark.brand == Theme.Brand.trae)
         }
         let customTraeCLI = Self.session(#","agent":"paseo","agent_label":"My CLI","launcher":"traecli""#)
         #expect(customTraeCLI.agentLabel == "My CLI")
@@ -83,7 +89,7 @@ struct AgentMarkTests {
         #expect(AgentKind.brand(named: "trae-cli") == Theme.Brand.trae)
         #expect(AgentKind.brand(named: "Claude Code") == Theme.Brand.claude)
         #expect(AgentKind.brand(named: "Codex") == Theme.Brand.openAI)
-        #expect(AgentKind.brand(named: "TraeCLI") == Theme.Brand.trae)
+        #expect(AgentKind.brand(named: "TRAE CLI") == Theme.Brand.trae)
         #expect(AgentKind.brand(named: "Grok · Official") == Theme.Brand.grok)
         #expect(AgentKind.brand(named: "Grok Build") == Theme.Brand.grok)
         #expect(AgentKind.brand(named: "Google Antigravity") == Theme.Brand.agy)

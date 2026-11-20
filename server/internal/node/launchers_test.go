@@ -252,8 +252,8 @@ func TestMergeLaunchersLeavesLauncherDefaultModelsEmpty(t *testing.T) {
 	if got := models["cx-explicit"].Model; got != "gpt-explicit" {
 		t.Errorf("explicit model = %q, want gpt-explicit", got)
 	}
-	if l := models[traexAgent]; l.Agent != traexAgent || l.DisplayName != "TraeCLI" {
-		t.Errorf("TraeCLI launcher kind or display name changed: %+v", l)
+	if l := models[traexAgent]; l.Agent != traexAgent || l.DisplayName != "TRAE CLI" {
+		t.Errorf("TRAE CLI launcher kind or display name changed: %+v", l)
 	}
 }
 

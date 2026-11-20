@@ -190,7 +190,7 @@ internal fun harnessGroups(list: List<HubLauncher>): List<Pair<String, List<HubL
 internal fun harnessName(h: String): String? = when (h) {
     "claude" -> "Claude Code"
     "codex" -> "Codex"
-    "traex", "traecli" -> "TraeCLI"
+    "traex", "traecli" -> "TRAE CLI"
     "agy" -> "Antigravity"
     "omp" -> "Oh My Pi"
     "api" -> null

@@ -334,27 +334,27 @@ func TestOrcaSendsToForegroundTraeCLI(t *testing.T) {
 			}
 			setProcess("S+")
 			if s := byID(listSessions(t, n))[threadMain]; s.Agent != traexAgent || s.PaneID != "orca:"+pane {
-				t.Fatalf("TraeCLI conversation is not bound to its terminal: %+v", s)
+				t.Fatalf("TRAE CLI conversation is not bound to its terminal: %+v", s)
 			}
 			o.Reset()
 
 			req := map[string]any{"session_id": threadMain, "text": "hello"}
 			if _, err := request(t, n, "session.send", req); err != nil {
-				t.Fatalf("send to foreground TraeCLI: %v", err)
+				t.Fatalf("send to foreground TRAE CLI: %v", err)
 			}
 			if writes := o.Writes(); len(writes) != 2 || writes[0].Text != "\x1b[200~hello\x1b[201~" || writes[1].Text != "\r" {
 				t.Fatalf("expected a bracketed paste and a separate submit, got %+v", writes)
 			}
 
 			o.Reset()
-			setProcess("S") // the same process and pane still exist, but TraeCLI no longer owns the foreground group
+			setProcess("S") // the same process and pane still exist, but TRAE CLI no longer owns the foreground group
 			if _, err := request(t, n, "session.send", req); err == nil {
-				t.Fatal("the background TraeCLI process accepted a send")
+				t.Fatal("the background TRAE CLI process accepted a send")
 			} else if code, data := refusalOf(t, err); code != "not_delivered" || data["delivered"] != "none" {
 				t.Fatalf("expected a refusal before typing, got %v", err)
 			}
 			if writes := o.Writes(); len(writes) != 0 {
-				t.Fatalf("wrote into the terminal without TraeCLI in front: %+v", writes)
+				t.Fatalf("wrote into the terminal without TRAE CLI in front: %+v", writes)
 			}
 		})
 	}

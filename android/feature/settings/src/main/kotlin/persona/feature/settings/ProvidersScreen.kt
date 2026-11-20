@@ -197,7 +197,7 @@ internal fun ProviderDetailPage(providers: ProviderSetup?, name: String, machine
         return
     }
     val facts = state.launcher?.let { providerFacts(it, label) }.orEmpty()
-    val title = stored?.settingsTitle ?: if (name == "traex" || name == "traecli") "TraeCLI" else name
+    val title = stored?.settingsTitle ?: if (name == "traex" || name == "traecli") "TRAE CLI" else name
     JListPage(title = title, onBack = onBack, actions = {
         if (stored?.managed == true) JIconButton(PhIcons.PencilSimple, stringResource(R.string.settings_pedit_edit), { editing = "form" })
     }) {

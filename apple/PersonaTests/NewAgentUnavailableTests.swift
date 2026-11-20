@@ -97,4 +97,13 @@ import PersonaWire
         #expect(UnavailableLauncher.shown(unavailable, after: [], query: " team ").map(\.name) == ["cx-gw"])
         #expect(UnavailableLauncher.shown(unavailable, after: [], query: "sonnet").isEmpty)
     }
+
+    @Test func findsTheBuiltInCLIByItsDisplayName() {
+        var cli = item("traex", display: "TRAEX")
+        cli.agent = "traex"
+        #expect(cli.title == "TRAE CLI")
+        #expect(UnavailableLauncher.shown([cli], after: [], query: "TRAE CLI") == [cli])
+        cli.displayName = "My CLI"
+        #expect(cli.title == "My CLI")
+    }
 }

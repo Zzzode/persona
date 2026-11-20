@@ -118,7 +118,7 @@ class ProviderEditShotsTest {
             page = "legacy"; capture("provider-computers-legacy-$suffix")
             page = "proxy"; capture("provider-proxy-$suffix")
             page = "list"; capture("providers-grouped-$suffix")
-            rule.onNodeWithText("TraeCLI").assertExists()
+            rule.onNodeWithText("TRAE CLI").assertExists()
         }
     }
 }

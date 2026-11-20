@@ -40,7 +40,7 @@ export function MainChatAgentNotice({ session, isMain, onNewMain }: { session: S
   if (!mismatch) return null;
   const named = (launcher: string) => {
     const row = info?.launchers.find((l) => l.name === launcher);
-    return row ? providerTitle(row) : launcher;
+    return providerTitle(row ?? { name: launcher });
   };
   return (
     <div data-main-chat-agent-notice role="status" className="flex min-h-9 items-center gap-2 rounded-[12px] bg-surface px-3 py-1.5 text-xs text-ink-2 shadow-card">

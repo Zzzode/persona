@@ -664,12 +664,17 @@ nonisolated struct Launcher: Codable, Identifiable, Hashable, Sendable {
     var id: String { name }
     /// What the pickers show: its display name, the built-in CLI's name on older hubs, or its startup name.
     var title: String {
-        if let label = displayName?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty { return label }
-        return Self.legacyTraeCLITitle(name: name, source: source, agent: runtimeAgent, baseURL: baseURL) ?? name
+        let trimmed = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let label = trimmed?.isEmpty == false ? trimmed : nil
+        return Self.traeCLITitle(name: name, source: source, agent: runtimeAgent, baseURL: baseURL, displayName: label) ?? label ?? name
     }
-    /// An older hub reports this machine launcher with an id and no display name.
-    static func legacyTraeCLITitle(name: String, source: String?, agent: String?, baseURL: String?) -> String? {
-        guard name == "traex", isMachineSource(source), agent == "traex" || baseURL == "(traex)" else { return nil }
+    /// Older hubs and runtime providers can supply a legacy label. Keep other labels chosen by the user.
+    static func traeCLITitle(name: String, source: String?, agent: String?, baseURL: String?, displayName: String?) -> String? {
+        guard name == "traex" || name == "traecli" || name == "trae-cli",
+              displayName.map(Session.isTraeCLIName) ?? true else { return nil }
+        if agent == MachineEngine.paseo.rawValue, name != "traex" { return Session.traeCLIName }
+        guard isMachineSource(source), agent == "traex" || agent == "traecli" || agent == "trae-cli" || baseURL == "(traex)"
+        else { return nil }
         return Session.traeCLIName
     }
     /// The launcher that starts the session in Claude's desktop app (docs/integrations/claude-integration.md「New sessions
@@ -748,7 +753,7 @@ nonisolated struct LauncherHealth: Codable, Hashable, Sendable {
 
 extension Launcher {
     /// Runs Claude Code or Codex, or is an agent runtime's launcher that says it can: what the Persona assistant can
-    /// use (headless `claude -p`, `codex app-server`, the runtime). Other agents (TraeCLI…) are left out; the node
+    /// use (headless `claude -p`, `codex app-server`, the runtime). Other agents (TRAE CLI…) are left out; the node
     /// refuses them with a reason too.
     var runsAssistant: Bool {
         if let assistant { return assistant }
@@ -1058,7 +1063,7 @@ nonisolated struct Session: Codable, Identifiable, Hashable, Sendable {
     var tabID: String?
     var workspaceID: String?
     var agentName: String?
-    /// The coding agent in the pane: "claude" (or nil, from older hubs), "codex" or "traex" (TraeCLI);
+    /// The coding agent in the pane: "claude" (or nil, from older hubs), "codex" or "traex" (TRAE CLI);
     /// for a session a runtime lists (DSH…, docs/integrations/runtimes.md), the agent it runs.
     var agent: String? = nil
     var sourceKind: String? = nil
@@ -1469,7 +1474,14 @@ nonisolated struct Session: Codable, Identifiable, Hashable, Sendable {
 
     var isCodex: Bool { agent == "codex" || sourceKind == "codex_app_server" || sourceKind == "codex_history" }
     var isTraex: Bool { agent == "traex" }
-    static let traeCLIName = "TraeCLI"
+    static let traeCLIName = "TRAE CLI"
+    /// Display labels sent for this agent during rolling upgrades.
+    static func isTraeCLIName(_ label: String) -> Bool {
+        switch label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "traex", "traecli", "trae-cli", "trae cli": true
+        default: false
+        }
+    }
     /// Claude Code (or an older hub that does not name the agent): what the Claude-only controls (modes, /clear,
     /// /model) are for. Any other agent — named or not yet known to this app — does not get them.
     var isClaude: Bool { !isCodex && (agent == nil || agent == "" || agent == "claude") }
@@ -1495,7 +1507,7 @@ nonisolated struct Session: Codable, Identifiable, Hashable, Sendable {
     /// thread driven through its app-server. Claude Code, the assistant and a runtime that declares `capabilities.modes`
     /// (such as Antigravity) change both, the rest neither.
     var setsEffortOnly: Bool { canSend && !assistant && !isClaude && !canChangeModes && !(efforts ?? []).isEmpty }
-    /// Who the user talks to in this session: "Claude", "Codex", "TraeCLI", or what the hub calls a runtime's agent ("DSH",
+    /// Who the user talks to in this session: "Claude", "Codex", "TRAE CLI", or what the hub calls a runtime's agent ("DSH",
     /// a Paseo provider's label such as "Grok"). Never the engine of several providers that runs it: a row that names
     /// only Paseo (no label of its own, or the node's "Paseo") names its provider by its launcher instead (#8144).
     var agentLabel: String {
@@ -1506,7 +1518,7 @@ nonisolated struct Session: Codable, Identifiable, Hashable, Sendable {
         if let launcher, !launcher.isEmpty {
             if Self.providerEngines.contains(agent?.lowercased() ?? ""),
                ["traecli", "trae-cli"].contains(launcher.lowercased()),
-               namesOnlyEngine || ["trae cli", "traecli", "trae-cli"].contains(agentLabelHint?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? "") {
+               namesOnlyEngine || (agentLabelHint.map(Self.isTraeCLIName) ?? false) {
                 return Self.traeCLIName
             }
             if namesOnlyEngine { return launcher }

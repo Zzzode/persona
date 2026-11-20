@@ -4,6 +4,7 @@ import persona.core.contracts.CoreText
 import persona.core.contracts.PaseoAgent
 import persona.core.contracts.Session
 import persona.core.contracts.TraeCliDisplayName
+import persona.core.contracts.isTraeCliLabel
 import persona.core.contracts.unknownAgentName
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -300,10 +301,11 @@ data class UnavailableLauncher(
 }
 
 internal fun launcherTitle(name: String, agent: String?, displayName: String?): String = when {
-    agent == PaseoAgent && name == "traecli" -> unknownAgentName(agent, displayName, name)
-    displayName != null -> displayName
-    (agent == "traex" || agent == "traecli") && (name == "traex" || name == "traecli") -> TraeCliDisplayName
-    else -> name
+    agent == PaseoAgent && (name == "traecli" || name == "trae-cli") -> unknownAgentName(agent, displayName, name)
+    (agent == "traex" || agent == "traecli" || agent == "trae-cli") &&
+        (name == "traex" || name == "traecli" || name == "trae-cli") &&
+        (displayName == null || isTraeCliLabel(displayName)) -> TraeCliDisplayName
+    else -> displayName ?: name
 }
 
 /**

@@ -13,7 +13,7 @@ struct ShareMessage: Identifiable {
     /// Who answers, as the chat names its agent (`Session.agentLabel`): its mark is the one that name has
     /// (`AgentKind.brand(named:)`), else its first letter.
     var agent = "Claude"
-    /// The built-in TraeCLI terminal keeps the share-card mark it already uses.
+    /// The built-in TRAE CLI terminal keeps the share-card mark it already uses.
     var showsTerminalMark = false
     var id: String { text }
 }
@@ -82,7 +82,7 @@ struct MessageShareCard: View {
 
     /// Who wrote it: the user, or the agent's own mark (Claude's, OpenAI's for Codex, TRAE's), else the first letter of
     /// its name on the same disc, as its row's mark draws it (`AgentKind`): a Paseo provider such as Grok is never drawn
-    /// as Claude (#8144). The built-in TraeCLI terminal keeps its green terminal mark.
+    /// as Claude (#8144). The built-in TRAE CLI terminal keeps its green terminal mark.
     @ViewBuilder private var avatar: some View {
         if message.isUser {
             ThemedIcon(Theme.Icon.user).font(.system(size: 15, weight: .semibold)).foregroundStyle(.white)

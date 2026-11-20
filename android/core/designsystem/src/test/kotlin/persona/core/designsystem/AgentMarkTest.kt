@@ -43,11 +43,11 @@ class AgentMarkTest {
 
     @Test fun traeHasItsMarkAndOthersTheirLetter() {
         assertEquals(AgentMarkKind.Trae, session("trae").agentMark?.kind)
-        assertEquals(AgentMarkKind.Trae, session("trae-cli").agentMark?.kind)
+        assertEquals(AgentMarkSpec(AgentMarkKind.Trae, "TRAE CLI", null), session("trae-cli").agentMark)
         val traex = session("traex").agentMark!!
         assertNull(traex.kind)
-        assertEquals("TraeCLI", traex.name)
-        assertEquals(AgentMarkSpec(AgentMarkKind.Trae, "TraeCLI", null), session("traecli").agentMark)
+        assertEquals("TRAE CLI", traex.name)
+        assertEquals(AgentMarkSpec(AgentMarkKind.Trae, "TRAE CLI", null), session("traecli").agentMark)
         assertEquals(AgentMarkKind.Dsh, session("dsh", label = "DSH").agentMark?.kind)
     }
 
@@ -58,7 +58,7 @@ class AgentMarkTest {
     @Test fun aPaseoProviderTakesTheMarkItsLauncherOrLabelNames() {
         fun paseo(label: String?, launcher: String?) =
             Session(sessionId = "paseo-1", agent = "paseo", agentLabelHint = label, launcher = launcher, sourceKind = "runtime").agentMark!!
-        assertEquals(AgentMarkSpec(AgentMarkKind.Trae, "TraeCLI", null), paseo("TRAE CLI", "traecli"))
+        assertEquals(AgentMarkSpec(AgentMarkKind.Trae, "TRAE CLI", null), paseo("TRAE CLI", "traecli"))
         assertEquals(AgentMarkKind.Trae, paseo(null, "traecli").kind)
         assertEquals(AgentMarkKind.Trae, paseo("Trae Agent", "my-agent").kind)
         assertEquals(AgentMarkKind.Claude, paseo("Claude Code (ACP)", "claude-acp").kind)

@@ -55,6 +55,17 @@ afterEach(() => {
 });
 
 describe("session metadata extractors & facet building", () => {
+  it("finds TRAE CLI by the product name and its command spelling", () => {
+    for (const agent of ["traex", "traecli", "trae-cli"]) {
+      const session = mkSession("cli", { agent });
+      expect(agentSearchHit(session, "TRAE CLI", baseCtx).score).toBe(40);
+      expect(agentSearchHit(session, "traecli", baseCtx).score).toBe(40);
+      expect(agentSearchHit(session, "harness:traecli", baseCtx).score).toBe(30);
+    }
+    const genericTrae = mkSession("generic", { agent: "trae" });
+    expect(agentSearchHit(genericTrae, "harness:traecli", baseCtx).score).toBe(0);
+  });
+
   it("extracts harness, project, model, and error status", () => {
     const s1 = mkSession("s1", { agent: "claude-code", model: "claude-opus-5-5[1m]", repo_root: "/code/persona" });
     const s2 = mkSession("s2", { agent: "", launcher: "codex-gpt-5", model: "", repo_root: undefined, cwd: "/code/weather", turn_error: "rate_limited" });

@@ -58,7 +58,7 @@ var aliases = map[string]string{"claude-code": "claude", "claudecode": "claude",
 var names = map[string]string{
 	"claude": "Claude Code", "codex": "Codex", "opencode": "OpenCode", "pi": "pi",
 	"gemini": "Gemini CLI", "cursor": "Cursor", "trae": "Trae",
-	"traex": "TraeCLI", "traecli": "TraeCLI", "trae-cli": "TraeCLI",
+	"traex": "TRAE CLI", "traecli": "TRAE CLI", "trae-cli": "TRAE CLI",
 }
 
 // Document uses complete immutable rows, not the 180-character list summaries.
@@ -123,6 +123,12 @@ func Document(item sessionlist.Item) (sessionlist.SearchDocument, error) {
 	}
 	d.Harness = agent
 	d.HarnessLabel = first(names[labelID], row.AgentLabel, row.AgentName, labelAgent)
+	var harnessCommand string
+	switch labelID {
+	case "traex", "traecli", "trae-cli":
+		harnessCommand = "traecli"
+		d.Harness += " " + harnessCommand
+	}
 	model := row.Model
 	if strings.TrimSpace(model) == "" {
 		model = launcherPrefix.ReplaceAllString(row.Launcher, "")
@@ -174,5 +180,8 @@ func Document(item sessionlist.Item) (sessionlist.SearchDocument, error) {
 		d.AgentText += shownWork
 	}
 	d.Metadata = strings.Join([]string{row.Cwd, row.RepoRoot, row.Branch, row.SpaceName, row.SlotName, d.HarnessLabel, shortModel(model), row.Activity}, " · ")
+	if harnessCommand != "" {
+		d.Metadata += " · " + harnessCommand
+	}
 	return d, nil
 }

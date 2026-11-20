@@ -106,27 +106,27 @@ func TestDocumentUsesFullFieldsAndDoesNotInventTranscript(t *testing.T) {
 
 func TestSearchFindsTraeCLIByDisplayName(t *testing.T) {
 	var items []sessionlist.Item
-	for agent, harness := range map[string]string{"traex": "traex", "traecli": "trae", "trae-cli": "trae"} {
+	for _, agent := range []string{"traex", "traecli", "trae-cli"} {
 		row := proto.Session{MachineID: "computer", SessionID: agent, Agent: agent, State: "idle"}
 		item := sessionlist.Item{ID: agent, Machine: row.MachineID, State: row.State, Full: row, Summary: row}
 		doc, err := Document(item)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if doc.HarnessLabel != "TraeCLI" || doc.Harness != harness {
-			t.Errorf("agent %q has label %q and harness %q", agent, doc.HarnessLabel, doc.Harness)
+		if doc.HarnessLabel != "TRAE CLI" {
+			t.Errorf("agent %q has label %q", agent, doc.HarnessLabel)
 		}
 		items = append(items, item)
 	}
 	var index sessionlist.Index
 	index.Replace("fixture", items)
-	for _, query := range []string{"TraeCLI", "harness:TraeCLI"} {
+	for query, want := range map[string]int{"TRAE CLI": 3, "traecli": 3, "harness:traecli": 3, "harness:traex": 1} {
 		page, err := index.Query(sessionlist.Options{Search: query, SearchContext: &sessionlist.SearchContext{Document: Document}, Limit: 10})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(page.Sessions) != len(items) {
-			t.Errorf("%q got %d sessions, want %d", query, len(page.Sessions), len(items))
+		if len(page.Sessions) != want {
+			t.Errorf("%q got %d sessions, want %d", query, len(page.Sessions), want)
 		}
 	}
 }

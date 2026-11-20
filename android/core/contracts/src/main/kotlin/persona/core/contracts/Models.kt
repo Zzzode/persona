@@ -353,7 +353,11 @@ data class SessionTodo(
  */
 const val PaseoAgent = "paseo"
 
-internal const val TraeCliDisplayName = "TraeCLI"
+internal const val TraeCliDisplayName = "TRAE CLI"
+internal fun isTraeCliLabel(label: String): Boolean = when (label.trim().lowercase()) {
+    "traecli", "trae-cli", "trae cli", "traex" -> true
+    else -> false
+}
 
 /**
  * The name of an agent the app does not know by its id ([agent]): what the hub calls it ([label], a runtime's own name,
@@ -365,11 +369,8 @@ fun unknownAgentName(agent: String?, label: String?, launcher: String?): String 
     if (agent != PaseoAgent) return said ?: agent.orEmpty()
     val providerLabel = said?.takeUnless { it.equals(PaseoAgent, ignoreCase = true) }
     val providerId = launcher?.trim()?.takeIf(String::isNotEmpty)
-    if (providerId == "traecli") {
-        when (providerLabel?.lowercase()) {
-            null, "traecli", "trae cli", "traex" -> return TraeCliDisplayName
-            else -> Unit
-        }
+    if ((providerId == "traecli" || providerId == "trae-cli") && (providerLabel == null || isTraeCliLabel(providerLabel))) {
+        return TraeCliDisplayName
     }
     return providerLabel ?: providerId ?: said ?: agent
 }
@@ -742,7 +743,7 @@ data class Session(
      */
     val agentLabel: String get() = when {
         isCodex -> "Codex"
-        agent == "traex" || agent == "traecli" -> TraeCliDisplayName
+        agent == "traex" || agent == "traecli" || agent == "trae-cli" -> TraeCliDisplayName
         isClaude -> "Claude"
         else -> unknownAgentName(agent, agentLabelHint, launcher)
     }
@@ -1220,9 +1221,10 @@ data class Interaction(
     val agentDisplayName: String?
         get() = when (agent) {
             "codex" -> "Codex"
-            "traex", "traecli" -> TraeCliDisplayName
+            "traex", "traecli", "trae-cli" -> TraeCliDisplayName
             null, "", "claude" -> null
             PaseoAgent -> agentLabelHint?.trim()?.takeUnless { it.isEmpty() || it.equals(PaseoAgent, ignoreCase = true) }
+                ?.let { if (isTraeCliLabel(it)) TraeCliDisplayName else it }
             else -> agentLabelHint?.takeIf(String::isNotBlank) ?: agent
         }
 

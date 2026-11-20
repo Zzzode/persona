@@ -22,7 +22,7 @@ const shown = (l: Named) => l.display_name?.trim() ?? "";
 /** The name to show first: the display name, else the startup ID. */
 export function providerTitle(l: Named): string {
   const name = shown(l);
-  return l.name === "traex" && (!name || isTraeCli(name)) ? agentName("traex") : name || l.name;
+  return isTraeCli(l.name) && (!name || isTraeCli(name)) ? agentName(l.name) : name || l.name;
 }
 
 /** The startup ID to show as secondary text (small monospace or a tooltip), or "" when the title already is the ID. */

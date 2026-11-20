@@ -75,7 +75,7 @@ class ParityLogicTest {
         assertEquals(listOf("team"), ProviderGroups.of(launchers, "GATEWAY.example").managed.map { it.name })
         assertEquals(listOf("cc_work"), ProviderGroups.of(launchers, "laptop") { if (it == "mac") "Laptop" else it }.zshrc.map { it.name })
         val traeCli = HubLauncher("traex", agent = "traex")
-        assertEquals(listOf(traeCli), ProviderGroups.of(launchers + traeCli, "TraeCLI").zshrc)
+        assertEquals(listOf(traeCli), ProviderGroups.of(launchers + traeCli, "TRAE CLI").zshrc)
         assertEquals(listOf(traeCli), ProviderGroups.of(launchers + traeCli, "traex").zshrc)
         assertTrue(ProviderGroups.of(launchers, "nothing").isEmpty)
         assertEquals("gateway.example.com", providerHost("https://gateway.example.com/v1"))
