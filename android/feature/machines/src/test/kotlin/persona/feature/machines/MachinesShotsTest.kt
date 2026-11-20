@@ -13,8 +13,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -104,6 +106,8 @@ class MachinesShotsTest {
         override suspend fun launchers(machineId: String) = listOf(
             AgentLauncher("claude", model = "anthropic/claude-opus-5"), AgentLauncher("codex"),
             JsonCodec.decodeFromString<AgentLauncher>("""{"name":"traex","base_url":"(traex)"}"""),
+            AgentLauncher("trae-cli", agentType = PaseoAgent),
+            AgentLauncher("traecli", agentType = PaseoAgent, displayName = "Team CLI"),
         )
         override suspend fun launcherQuota(machineId: String, name: String, refresh: Boolean) = LauncherQuotaAnswer()
         override suspend fun reconnect(machineId: String) = Unit
@@ -150,7 +154,8 @@ class MachinesShotsTest {
             rule.onNodeWithText(if (d) detail else listTitle).assertExists()
             if (d) {
                 rule.onNodeWithText(botmux).assertExists()
-                rule.onNodeWithText("TRAE CLI").assertExists()
+                rule.onAllNodesWithText("TRAE CLI").assertCountEquals(2)
+                rule.onNodeWithText("Team CLI").assertExists()
             } else {
                 rule.onNodeWithText(offline).assertExists()
                 rule.onNodeWithText(mac.error!!).assertExists() // the hub's own words stay, after the plain ones

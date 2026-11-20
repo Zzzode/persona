@@ -10,6 +10,7 @@ import persona.core.contracts.JsonCodec
 import persona.core.contracts.api.UsageDay
 import persona.core.contracts.api.UsageTokens
 import persona.core.designsystem.AgentMarkKind
+import persona.core.designsystem.AgentMarkSpec
 import java.io.File
 
 class UsageCalendarDataTest {
@@ -33,6 +34,7 @@ class UsageCalendarDataTest {
             assertEquals(brands[id], mark.kind)
             assertNull(mark.surface)
         }
+        assertEquals(AgentMarkSpec(AgentMarkKind.Trae, "TRAE CLI", null), usageAgentMark("trae-cli"))
         val runtime = requireNotNull(usageAgentMark("My-Runtime"))
         assertEquals("My-Runtime", runtime.name)
         assertNull(runtime.kind)

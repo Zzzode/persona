@@ -175,9 +175,13 @@ class ModelsTest {
         assertEquals("grok", label(""""agent_label":"Paseo","launcher":"grok""""))
         assertEquals("grok", label(""""agent_label":" ","launcher":"grok""""))
         assertEquals("grok", label(""""launcher":"grok""""))
-        assertEquals("TRAE CLI", label(""""agent_label":"TRAE CLI","launcher":"traecli""""))
-        assertEquals("TRAE CLI", label(""""launcher":"traecli""""))
-        assertEquals("My agent", label(""""agent_label":"My agent","launcher":"traecli""""))
+        for (id in listOf("traex", "traecli", "trae-cli")) {
+            assertEquals("TRAE CLI", label(""""agent_label":"TRAEX","launcher":"$id""""))
+            assertEquals("TRAE CLI", label(""""launcher":"$id""""))
+            assertEquals("My agent", label(""""agent_label":"My agent","launcher":"$id""""))
+            assertEquals("TRAE CLI", AgentLauncher(name = id, agentType = "paseo").title)
+            assertEquals("My agent", HubLauncher(name = id, agent = "paseo", displayName = "My agent").title)
+        }
         // Nothing else to go by: as before.
         assertEquals("Paseo", label(""""agent_label":"Paseo""""))
         assertEquals("paseo", label(""""status":"idle""""))

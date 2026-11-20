@@ -17,6 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import persona.core.contracts.Machine
 import persona.core.contracts.api.AgentLauncher
+import persona.core.contracts.isTraeCliId
 import persona.core.designsystem.*
 import persona.core.designsystem.icons.PhIcons
 import persona.core.domain.engines.Engines
@@ -183,10 +184,7 @@ internal fun LazyListScope.machineLaunchers(online: Boolean, state: MachineActio
     }
     itemsIndexed(launchers, key = { _, it -> "launcher-${it.name}" }, contentType = { _, _ -> "launcher" }) { index, launcher ->
         val model = launcherModel(launcher)
-        val title = when {
-            launcher.name == "traex" || launcher.agentType == "traex" || launcher.agentType == "traecli" -> launcher.title
-            else -> launcher.name
-        }
+        val title = if (isTraeCliId(launcher.name) || isTraeCliId(launcher.agentType)) launcher.title else launcher.name
         JGroupItem(GroupPosition.of(index, launchers.size)) {
             JRow(chevron = onLauncher != null, onClick = onLauncher?.let { open -> { open(launcher.name) } }, trailing = if (model == null) null else ({
                 Text(model, style = PersonaTheme.type.caption, color = PersonaTheme.palette.ink3, maxLines = 1, overflow = TextOverflow.Ellipsis)

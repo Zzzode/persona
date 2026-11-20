@@ -357,10 +357,14 @@ data class SessionTodo(
  */
 const val PaseoAgent = "paseo"
 
-internal const val TraeCliDisplayName = "TRAE CLI"
-internal fun isTraeCliLabel(label: String): Boolean = when (label.trim().lowercase()) {
-    "traecli", "trae-cli", "trae cli", "traex" -> true
-    else -> false
+const val TraeCliDisplayName = "TRAE CLI"
+
+/** Known wire and launcher identifiers for the CLI. The IDE's `trae` identifier is separate. */
+fun isTraeCliId(id: String?): Boolean = id == "traex" || id == "traecli" || id == "trae-cli"
+
+internal fun isTraeCliLabel(label: String): Boolean {
+    val normalized = label.trim().lowercase()
+    return isTraeCliId(normalized) || normalized == "trae cli"
 }
 
 /**
@@ -373,7 +377,7 @@ fun unknownAgentName(agent: String?, label: String?, launcher: String?): String 
     if (agent != PaseoAgent) return said ?: agent.orEmpty()
     val providerLabel = said?.takeUnless { it.equals(PaseoAgent, ignoreCase = true) }
     val providerId = launcher?.trim()?.takeIf(String::isNotEmpty)
-    if ((providerId == "traecli" || providerId == "trae-cli") && (providerLabel == null || isTraeCliLabel(providerLabel))) {
+    if (isTraeCliId(providerId) && (providerLabel == null || isTraeCliLabel(providerLabel))) {
         return TraeCliDisplayName
     }
     return providerLabel ?: providerId ?: said ?: agent
@@ -749,7 +753,7 @@ data class Session(
      */
     val agentLabel: String get() = when {
         isCodex -> "Codex"
-        agent == "traex" || agent == "traecli" || agent == "trae-cli" -> TraeCliDisplayName
+        isTraeCliId(agent) -> TraeCliDisplayName
         isClaude -> "Claude"
         else -> unknownAgentName(agent, agentLabelHint, launcher)
     }

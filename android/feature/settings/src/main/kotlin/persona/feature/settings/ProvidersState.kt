@@ -11,6 +11,7 @@ import persona.core.contracts.api.ImportedProvider
 import persona.core.contracts.api.LauncherCheck
 import persona.core.contracts.api.LauncherImportResult
 import persona.core.contracts.api.ProviderSetup
+import persona.core.contracts.isTraeCliId
 import persona.core.designsystem.UiText
 import persona.core.designsystem.failureReasonText
 import persona.core.hub.HubFailure
@@ -32,10 +33,7 @@ internal data class ProviderGroups(val managed: List<HubLauncher>, val zshrc: Li
 }
 
 internal val HubLauncher.settingsTitle: String
-    get() = when {
-        name == "traex" || harness == "traex" || harness == "traecli" -> title
-        else -> name
-    }
+    get() = if (isTraeCliId(name) || isTraeCliId(harness)) title else name
 
 /** A gateway's host, for the row (the whole address is on the provider's page). */
 internal fun providerHost(baseUrl: String?): String? =

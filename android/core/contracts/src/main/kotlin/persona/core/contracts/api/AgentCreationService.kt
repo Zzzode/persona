@@ -4,6 +4,7 @@ import persona.core.contracts.CoreText
 import persona.core.contracts.PaseoAgent
 import persona.core.contracts.Session
 import persona.core.contracts.TraeCliDisplayName
+import persona.core.contracts.isTraeCliId
 import persona.core.contracts.isTraeCliLabel
 import persona.core.contracts.unknownAgentName
 import kotlinx.serialization.SerialName
@@ -307,9 +308,8 @@ internal fun launcherTitle(
     val legacyMachineCli = name == "traex" && baseUrl == "(traex)" &&
         (source.isNullOrEmpty() || source == "path" || source == "zshrc" || source == "builtin")
     return when {
-        agent == PaseoAgent && (name == "traecli" || name == "trae-cli") -> unknownAgentName(agent, displayName, name)
-        (legacyMachineCli || agent == "traex" || agent == "traecli" || agent == "trae-cli") &&
-            (name == "traex" || name == "traecli" || name == "trae-cli") &&
+        agent == PaseoAgent && isTraeCliId(name) -> unknownAgentName(agent, displayName, name)
+        (legacyMachineCli || isTraeCliId(agent)) && isTraeCliId(name) &&
             (displayName == null || isTraeCliLabel(displayName)) -> TraeCliDisplayName
         else -> displayName ?: name
     }

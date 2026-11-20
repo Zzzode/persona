@@ -13,10 +13,12 @@ import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.launch
 import persona.core.contracts.GroupKeys
 import persona.core.contracts.Machine
+import persona.core.contracts.TraeCliDisplayName
 import persona.core.contracts.api.HubLauncher
 import persona.core.contracts.api.LauncherCheck
 import persona.core.contracts.api.LauncherImportResult
 import persona.core.contracts.api.ProviderSetup
+import persona.core.contracts.isTraeCliId
 import persona.core.designsystem.*
 import persona.core.designsystem.icons.PhIcons
 
@@ -177,8 +179,9 @@ private fun LauncherRow(l: HubLauncher, machineName: (String) -> String, selecte
  */
 @Composable
 internal fun ProviderDetailPage(providers: ProviderSetup?, name: String, machines: List<Machine>, onBack: () -> Unit) {
+    val fallbackTitle = if (isTraeCliId(name)) TraeCliDisplayName else name
     if (providers == null) {
-        JListPage(title = name, onBack = onBack) { item { JNotice(stringResource(R.string.settings_providers_demo)) } }
+        JListPage(title = fallbackTitle, onBack = onBack) { item { JNotice(stringResource(R.string.settings_providers_demo)) } }
         return
     }
     val model = remember(providers, name) { ProviderDetailModel(providers, name) }
@@ -197,7 +200,7 @@ internal fun ProviderDetailPage(providers: ProviderSetup?, name: String, machine
         return
     }
     val facts = state.launcher?.let { providerFacts(it, label) }.orEmpty()
-    val title = stored?.settingsTitle ?: if (name == "traex" || name == "traecli") "TRAE CLI" else name
+    val title = stored?.settingsTitle ?: fallbackTitle
     JListPage(title = title, onBack = onBack, actions = {
         if (stored?.managed == true) JIconButton(PhIcons.PencilSimple, stringResource(R.string.settings_pedit_edit), { editing = "form" })
     }) {
