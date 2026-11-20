@@ -292,7 +292,7 @@ func (s *Service) pickerLaunchersFrom(ctx context.Context, machine string, ls []
 }
 
 // assistantPickerLaunchers bounds live shell discovery to the launcher sync deadline. If the shell is slow to start,
-// the machine's last known launchers and any Persona-managed providers can still populate the main chat's menu,
+// the machine's last known shell launchers and scoped Persona providers can still populate the main chat's menu,
 // including providers that cannot run here and why.
 func (s *Service) assistantPickerLaunchers(ctx context.Context, d Device, refresh bool, lang i18n.Lang) (picker, fits []ConfiguredLauncher, unavailable []unavailableLauncher, err error) {
 	var syncErr error
@@ -311,7 +311,12 @@ func (s *Service) assistantPickerLaunchers(ctx context.Context, d Device, refres
 			listing = launcherListing{} // the saved snapshot was requested without an engine host
 			lastSeen, _ := s.zshrcLaunchersLastSeen(ctx)
 			if i := slices.IndexFunc(lastSeen, func(m zshrcLaunchers) bool { return m.MachineID == d.ID }); i >= 0 {
-				listing.Launchers = lastSeen[i].Launchers
+				// A saved runtime advertisement does not establish that the runtime is still connected.
+				for _, l := range lastSeen[i].Launchers {
+					if l.Source == "" || machineSource(l.Source) {
+						listing.Launchers = append(listing.Launchers, l)
+					}
+				}
 			}
 		}
 		res := machineLauncherListing{

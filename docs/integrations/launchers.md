@@ -28,9 +28,11 @@ The answer adds `sync`: one item per computer, with `state` `ok` / `offline` / `
 (settings `launchers.zshrc.meta`). A computer that didn't answer still shows its last list, but the entries' `stale` names that computer; every client marks them “Not updated” and explains why in the per-computer group.
 An entry's `rc_files` are the files it came from (`source: "zshrc"` only; older nodes don't report it, so it is `~/.zshrc`).
 
-The Assistant picker uses the same 10-second discovery budget. On a shell timeout the picker can show that computer's
-last known shell launchers and the providers already known to Persona. If it has no choices to show, it returns a
-timeout so the client can offer Retry. The node bounds the shell scan and stops its child processes when it times out.
+The Assistant picker gives shell discovery 10 seconds and reserves one further second for own-service checks. On a
+shell timeout it can show that computer's last known shell and PATH launchers and the providers in its current scope.
+Runtime launchers require a live response. Confirmed unavailable providers still show their reason. If the picker has
+neither available nor unavailable entries, it returns a timeout so the client can offer Retry. The node bounds the
+shell scan and stops its child processes when it times out.
 
 ## External model adapters (#7940)
 

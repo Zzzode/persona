@@ -81,8 +81,11 @@ func TestMainChatPickerUsesKnownProvidersDuringShellTimeout(t *testing.T) {
 	f.slowLaunchers = nil
 	f.sessions["other"] = nil
 	f.zshrc = map[string][]proto.Launcher{
-		"server": {{Name: "cached-alias", Source: "zshrc"}},
-		"other":  {{Name: "other-machine", Source: "zshrc"}},
+		"server": {
+			{Name: "cached-alias", Source: "zshrc"},
+			{Name: "connected-runtime", Source: "agy", Agent: "agy", Assistant: true},
+		},
+		"other": {{Name: "other-machine", Source: "zshrc"}},
 	}
 	f.mu.Unlock()
 	shellReads, ownServiceReads := 0, 0
@@ -99,6 +102,9 @@ func TestMainChatPickerUsesKnownProvidersDuringShellTimeout(t *testing.T) {
 	}
 	if ownServiceReads != 1 {
 		t.Fatalf("cold picker made %d own-service reads, want 1 even on an older node", ownServiceReads)
+	}
+	if got := pickerNames(t, s, "assistant"); !slices.Equal(got, []string{"cached-alias", "connected-runtime", "gw"}) {
+		t.Fatalf("picker with live runtime = %v", got)
 	}
 	_ = s.zshrcLaunchers(t.Context(), true)
 	f.mu.Lock()
