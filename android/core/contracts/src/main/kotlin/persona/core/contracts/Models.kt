@@ -353,6 +353,8 @@ data class SessionTodo(
  */
 const val PaseoAgent = "paseo"
 
+internal const val TraeCliDisplayName = "TraeCLI"
+
 /**
  * The name of an agent the app does not know by its id ([agent]): what the hub calls it ([label], a runtime's own name,
  * "DSH"), else the id. Paseo's [PaseoAgent] is its engine, not the agent: there it is the provider's label, else its
@@ -361,7 +363,15 @@ const val PaseoAgent = "paseo"
 fun unknownAgentName(agent: String?, label: String?, launcher: String?): String {
     val said = label?.trim()?.takeIf(String::isNotEmpty)
     if (agent != PaseoAgent) return said ?: agent.orEmpty()
-    return said?.takeUnless { it.equals(PaseoAgent, ignoreCase = true) } ?: launcher?.trim()?.takeIf(String::isNotEmpty) ?: said ?: agent
+    val providerLabel = said?.takeUnless { it.equals(PaseoAgent, ignoreCase = true) }
+    val providerId = launcher?.trim()?.takeIf(String::isNotEmpty)
+    if (providerId == "traecli") {
+        when (providerLabel?.lowercase()) {
+            null, "traecli", "trae cli", "traex" -> return TraeCliDisplayName
+            else -> Unit
+        }
+    }
+    return providerLabel ?: providerId ?: said ?: agent
 }
 
 /** A permission mode change recorded by the session's manager (GET …/mode-changes, #10297). */
@@ -732,7 +742,7 @@ data class Session(
      */
     val agentLabel: String get() = when {
         isCodex -> "Codex"
-        agent == "traex" -> "TRAEX"
+        agent == "traex" || agent == "traecli" -> TraeCliDisplayName
         isClaude -> "Claude"
         else -> unknownAgentName(agent, agentLabelHint, launcher)
     }
@@ -1210,7 +1220,7 @@ data class Interaction(
     val agentDisplayName: String?
         get() = when (agent) {
             "codex" -> "Codex"
-            "traex" -> "TRAEX"
+            "traex", "traecli" -> TraeCliDisplayName
             null, "", "claude" -> null
             PaseoAgent -> agentLabelHint?.trim()?.takeUnless { it.isEmpty() || it.equals(PaseoAgent, ignoreCase = true) }
             else -> agentLabelHint?.takeIf(String::isNotBlank) ?: agent

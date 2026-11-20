@@ -131,10 +131,10 @@ internal fun ProvidersPage(
             l.managed -> JAction(stringResource(R.string.settings_providers_delete), PhIcons.Trash, destructive = true) { deleting = l }
             l.hidden -> JAction(stringResource(R.string.settings_providers_restore), PhIcons.Eye) { scope.launch { model.setHidden(l, false) } }
             else -> JAction(stringResource(R.string.settings_providers_hide), PhIcons.Prohibit) { scope.launch { model.setHidden(l, true) } }
-        }), { menu = null }, title = l.name)
+        }), { menu = null }, title = l.settingsTitle)
     }
     deleting?.let { l ->
-        JDialog(onDismiss = { deleting = null }, title = stringResource(R.string.settings_providers_delete_title, l.name),
+        JDialog(onDismiss = { deleting = null }, title = stringResource(R.string.settings_providers_delete_title, l.settingsTitle),
             text = stringResource(R.string.settings_providers_delete_text), destructive = true,
             confirm = stringResource(R.string.settings_providers_delete) to { deleting = null; scope.launch { model.delete(l) }; Unit })
     }
@@ -156,10 +156,10 @@ private fun androidx.compose.foundation.lazy.LazyListScope.launcherRows(
 private fun LauncherRow(l: HubLauncher, machineName: (String) -> String, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
     val palette = PersonaTheme.palette
     val machines = l.machines.joinToString(stringResource(R.string.settings_providers_list_sep), transform = machineName)
-    JRow(selected = selected, onClick = onClick, onLongClick = onLongClick, onClickLabel = l.name) {
+    JRow(selected = selected, onClick = onClick, onLongClick = onLongClick, onClickLabel = l.settingsTitle) {
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(Tokens.Space.xs)) {
             Row(horizontalArrangement = Arrangement.spacedBy(Tokens.Space.s)) {
-                Text(l.name, Modifier.weight(1f, fill = false), style = PersonaTheme.type.code, color = if (l.hidden) palette.ink3 else palette.ink,
+                Text(l.settingsTitle, Modifier.weight(1f, fill = false), style = PersonaTheme.type.code, color = if (l.hidden) palette.ink3 else palette.ink,
                     maxLines = 1, overflow = TextOverflow.Ellipsis)
                 if (l.managed) JTag("Persona", status = Status.Working)
                 if (l.isApi) JTag(stringResource(R.string.settings_providers_api_tag))
@@ -197,7 +197,8 @@ internal fun ProviderDetailPage(providers: ProviderSetup?, name: String, machine
         return
     }
     val facts = state.launcher?.let { providerFacts(it, label) }.orEmpty()
-    JListPage(title = name, onBack = onBack, actions = {
+    val title = stored?.settingsTitle ?: if (name == "traex" || name == "traecli") "TraeCLI" else name
+    JListPage(title = title, onBack = onBack, actions = {
         if (stored?.managed == true) JIconButton(PhIcons.PencilSimple, stringResource(R.string.settings_pedit_edit), { editing = "form" })
     }) {
         val l = state.launcher
@@ -288,7 +289,7 @@ internal fun ProviderDetailPage(providers: ProviderSetup?, name: String, machine
     }
     val l = state.launcher
     if (confirm && l != null) JDialog(onDismiss = { confirm = false },
-        title = stringResource(if (l.managed) R.string.settings_providers_delete_title else R.string.settings_providers_hide_title, l.name),
+        title = stringResource(if (l.managed) R.string.settings_providers_delete_title else R.string.settings_providers_hide_title, l.settingsTitle),
         text = stringResource(if (l.managed) R.string.settings_providers_delete_text else R.string.settings_providers_hidden_note), destructive = l.managed,
         confirm = stringResource(if (l.managed) R.string.settings_providers_delete else R.string.settings_providers_hide) to { confirm = false; scope.launch { model.remove() }; Unit })
 }

@@ -19,6 +19,7 @@ val Session.agentMark: AgentMarkSpec?
         }
         return when {
             isCodex -> AgentMarkSpec(AgentMarkKind.Codex, "Codex", surface)
+            agent == "traecli" -> AgentMarkSpec(AgentMarkKind.Trae, agentLabel, surface)
             agent?.lowercase() in TRAE -> AgentMarkSpec(AgentMarkKind.Trae, "TRAE", surface)
             isClaude -> AgentMarkSpec(AgentMarkKind.Claude, "Claude Code", surface)
             else -> AgentMarkSpec(knownAgentMark(agent) ?: knownAgentMark(launcher) ?: knownAgentMark(agentLabelHint), agentLabel, surface)

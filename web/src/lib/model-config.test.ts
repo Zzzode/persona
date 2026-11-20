@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  modelPurpose, modelSummary, runtimeFallbackText,
+  modelPurpose, modelProviderTitle, modelSummary, providerName, runtimeFallbackText, runtimeLabel,
   type ModelProvider, type ModelPurpose,
 } from "./model-config";
 import {
@@ -24,6 +24,14 @@ const providers: ModelProvider[] = [
 afterEach(() => vi.unstubAllGlobals());
 
 describe("用途配置", () => {
+  it("displays the built-in TraeCLI provider without changing its saved ID or custom names", () => {
+    const provider = { id: "launcher.traex", name: "traex", kind: "launcher" as const };
+    expect(modelProviderTitle(provider)).toBe("TraeCLI");
+    expect(providerName(provider.id)).toBe("TraeCLI");
+    expect(providerName(provider.id, [{ ...provider, name: "Team relay" }])).toBe("Team relay");
+    expect(runtimeLabel("cli", "traex")).toBe("TraeCLI");
+  });
+
   it("uses overrides for editing, never silently fixes a missing provider", () => {
     expect(draftFor(purpose)).toEqual({ provider: "strong", model: "main", effort: "high", runtime: "" });
     expect(draftFor({ ...purpose, override: { provider: "gone" } })).toEqual({ provider: "gone", model: "", effort: "", runtime: "" });

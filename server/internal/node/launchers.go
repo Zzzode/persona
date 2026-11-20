@@ -272,7 +272,7 @@ func mergeLaunchers(out string) (list []proto.Launcher, codex map[string][]strin
 		}
 	}
 	if strings.TrimSpace(traexPath) != "" && !seen[traexAgent] && codex[traexAgent] == nil {
-		list = append(list, proto.Launcher{Name: traexAgent, Agent: traexAgent, Source: "zshrc"})
+		list = append(list, proto.Launcher{Name: traexAgent, Agent: traexAgent, Source: "zshrc", DisplayName: "TraeCLI"})
 	}
 	if strings.TrimSpace(ompPath) != "" && !seen["omp"] && codex["omp"] == nil {
 		list = append(list, proto.Launcher{Name: "omp", Agent: "omp", Source: "zshrc"})

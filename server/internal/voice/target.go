@@ -133,7 +133,7 @@ func agentLabel(s *proto.Session) string {
 	case "codex":
 		return "Codex"
 	case "traex":
-		return "TRAEX"
+		return "TraeCLI"
 	}
 	return "Claude Code"
 }

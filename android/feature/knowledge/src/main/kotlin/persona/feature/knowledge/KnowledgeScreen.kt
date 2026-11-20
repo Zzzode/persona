@@ -532,7 +532,7 @@ private fun LazyListScope.agents(agents: List<Session>, navigator: Navigator) {
         val status = session.agentState.status()
         AgentRow(session.displayTitle, status, onClick = { navigator.navigate(ChatRoute(session.machineId, session.sessionId, ConversationKind.Agent)) },
             position = GroupPosition.of(index, agents.size), preview = session.workLine(java.time.Instant.now())?.text() ?: session.lastText, statusText = status.localizedLabel,
-            agent = session.agentLabel.takeIf { session.agent in setOf("codex", "traex") },
+            agent = session.agentLabel.takeIf { session.agent in setOf("codex", "traex", "traecli") },
             facts = listOf(RowFact(listOf(session.machineId, session.folderName).filter { it.isNotBlank() }.joinToString(" / "))))
     }
 }

@@ -41,6 +41,12 @@ export function agentId(raw: string | undefined | null): string {
   return ALIASES[id.replace(/[\s._-]/g, "")] ?? (id || "claude");
 }
 
+/** The built-in type and the CLI's public command name share a display name. */
+export function isTraeCli(raw: string | undefined | null): boolean {
+  const name = (raw ?? "").trim().toLowerCase().replace(/[\s._-]/g, "");
+  return name === "traex" || name === "traecli";
+}
+
 export function isMarked(id: string): id is MarkedAgent {
   return (MARKED_AGENTS as readonly string[]).includes(id);
 }
@@ -73,8 +79,9 @@ export function providerAgent(agent: string | undefined | null, provider: string
 
 /** What the agent is called: the product's name for the ones the app knows, else the runtime's own label, else the string as reported. */
 export function agentName(raw: string | undefined | null, label?: string): string {
+  if (isTraeCli(raw)) return t("agent-mark.traex");
   const id = agentId(raw);
-  if ((NAMED_AGENTS as readonly string[]).includes(id) || id === "traex" || id === "omp") return t(`agent-mark.${id}`); // spec/fixtures/agent-names
+  if ((NAMED_AGENTS as readonly string[]).includes(id) || id === "omp") return t(`agent-mark.${id}`); // spec/fixtures/agent-names
   return label?.trim() || (raw ?? "").trim() || t("agent-mark.unknown");
 }
 

@@ -115,6 +115,8 @@ class ModelPillTest {
         assertEquals(persona.core.designsystem.AgentMarkSpec(persona.core.designsystem.AgentMarkKind.Grok, "My Grok", null), words.mark("grok"))
         // A provider whose name is a mark the design system has draws it.
         assertEquals(persona.core.designsystem.AgentMarkKind.Trae, words.mark("traecli")?.kind)
+        assertEquals("TraeCLI", words.engine("traecli"))
+        assertEquals("TraeCLI", words.engine("traex"))
         assertEquals("Claude Code", words.engine("claude"))
         val (content, spoken) = pillContent(persona.core.domain.models.PillView(persona.core.domain.models.PillSetup("grok", "grok", "Grok 5", null)),
             null, ultracode = false, res, names)

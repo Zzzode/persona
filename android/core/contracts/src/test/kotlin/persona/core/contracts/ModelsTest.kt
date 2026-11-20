@@ -6,6 +6,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import persona.core.contracts.api.AgentLauncher
+import persona.core.contracts.api.HubLauncher
+import persona.core.contracts.api.UnavailableLauncher
 
 class ModelsTest {
     @Test fun agentTaskResultsDecodeRunningAndKeepOriginalReportIdentity() {
@@ -128,12 +131,24 @@ class ModelsTest {
         assertEquals("Claude", label(""""agent":"claude""""))
         assertEquals("Codex", label(""""agent":"codex""""))
         assertEquals("Codex", label(""""source_kind":"codex_app_server""""))
-        assertEquals("TRAEX", label(""""agent":"traex""""))
+        assertEquals("TraeCLI", label(""""agent":"traex""""))
+        assertEquals("TraeCLI", label(""""agent":"traecli""""))
         assertEquals("DSH", label(""""agent":"dsh","agent_label":"DSH""""))
         assertEquals("pi", label(""""agent":"pi""""))
         val dsh = JsonCodec.decodeFromString<Session>("""{"session_id":"s","agent":"dsh"}""")
         assertTrue(!dsh.isClaude && !dsh.isCodex)
         assertTrue(JsonCodec.decodeFromString<Session>("""{"session_id":"s","agent":""}""").isClaude)
+    }
+
+    @Test fun namedTraeCliLaunchersKeepTheirConfigurationIdentifiersAndCustomTitles() {
+        val builtIn = AgentLauncher(name = "traex", agentType = "traex")
+        assertEquals("TraeCLI", builtIn.title)
+        assertEquals("traex", builtIn.name)
+        assertEquals("My CLI", builtIn.copy(displayName = "My CLI").title)
+        assertEquals("claude", builtIn.copy(name = "claude", agentType = "claude").title)
+        assertEquals("TraeCLI", UnavailableLauncher(name = "traex", agent = "traex").title)
+        assertEquals("TraeCLI", HubLauncher(name = "traex", agent = "traex").title)
+        assertEquals("Custom Claude", HubLauncher(name = "traex", displayName = "Custom Claude").title)
     }
 
     @Test fun aPaseoProviderIsNamedByItsOwnNameNeverTheEngines() {
@@ -144,6 +159,9 @@ class ModelsTest {
         assertEquals("grok", label(""""agent_label":"Paseo","launcher":"grok""""))
         assertEquals("grok", label(""""agent_label":" ","launcher":"grok""""))
         assertEquals("grok", label(""""launcher":"grok""""))
+        assertEquals("TraeCLI", label(""""agent_label":"TRAE CLI","launcher":"traecli""""))
+        assertEquals("TraeCLI", label(""""launcher":"traecli""""))
+        assertEquals("My agent", label(""""agent_label":"My agent","launcher":"traecli""""))
         // Nothing else to go by: as before.
         assertEquals("Paseo", label(""""agent_label":"Paseo""""))
         assertEquals("paseo", label(""""status":"idle""""))

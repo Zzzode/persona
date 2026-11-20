@@ -25,6 +25,15 @@ describe("provider names", () => {
     expect(providerTitle({ name: "glm", display_name: " Zhipu GLM " })).toBe("Zhipu GLM");
   });
 
+  it("uses the TraeCLI product name for the built-in launcher from older and current hubs", () => {
+    for (const display_name of [undefined, "TRAEX", "TraeCLI"]) {
+      const launcher = { name: "traex", display_name };
+      expect(providerLabel(launcher)).toBe("TraeCLI");
+      expect(namedLauncher("traex", [launcher])).toBe(launcher);
+    }
+    expect(providerLabel({ name: "traex", display_name: "Work relay" })).toBe("Work relay");
+  });
+
   it("looks a launcher up by its startup ID", () => {
     const list = [{ name: "glm", display_name: "Zhipu GLM" }, { name: "cc_kimi" }];
     expect(launcherTitle("glm", list)).toBe("Zhipu GLM");

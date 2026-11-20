@@ -28,7 +28,9 @@ nonisolated struct AgentKind: Equatable, Sendable {
         surface = s.agentSurface.flatMap(Surface.init(rawValue:))
         switch (s.agent ?? "").lowercased() {
         case _ where s.isCodex: brand = Theme.Brand.openAI; name = "Codex"
-        case "trae", "trae-cli", "traecli": brand = Theme.Brand.trae; name = "TRAE"
+        case "trae": brand = Theme.Brand.trae; name = "TRAE"
+        case "trae-cli", "traecli": brand = Theme.Brand.trae; name = Session.traeCLIName
+        case "traex": brand = nil; name = Session.traeCLIName
         case _ where s.isClaude: brand = Theme.Brand.claude; name = "Claude Code"
         default:
             // A runtime's agent by the name the row gives it (Paseo's provider label, else its launcher, its provider's
@@ -49,7 +51,8 @@ nonisolated struct AgentKind: Equatable, Sendable {
         case "claude": brand = Theme.Brand.claude; name = "Claude Code"
         case "codex": brand = Theme.Brand.openAI; name = "Codex"
         case "trae": brand = Theme.Brand.trae; name = "TRAE"
-        case "traex": brand = nil; name = "TRAEX"
+        case "trae-cli", "traecli": brand = Theme.Brand.trae; name = Session.traeCLIName
+        case "traex": brand = nil; name = Session.traeCLIName
         case "omp": brand = nil; name = "Oh My Pi"
         case "gemini": brand = Theme.Brand.gemini; name = "Gemini CLI"
         case "cursor": brand = Theme.Brand.cursor; name = "Cursor"
@@ -57,9 +60,8 @@ nonisolated struct AgentKind: Equatable, Sendable {
         }
     }
 
-    /// The mark of an agent known by `name`, a provider's label or id ("TRAE", "Trae CLI", "traecli"), with case, spaces,
-    /// hyphens and underscores ignored; nil for one the app has no mark for. TRAEX, an in-house Codex fork, keeps its
-    /// letter (its name is not TRAE's).
+    /// The mark of an agent known by `name`, a provider's label or id ("TRAE", "TraeCLI", "trae-cli"), with case, spaces,
+    /// hyphens and underscores ignored; nil for one the app has no mark for.
     static func brand(named name: String?) -> String? {
         guard let name else { return nil }
         let product = name.split(separator: "·", maxSplits: 1).first ?? ""

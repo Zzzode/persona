@@ -184,7 +184,7 @@ private fun TargetRow(s: Session, position: GroupPosition, machine: String?, tit
     AgentRow(title, status, onClick = { if (enabled) onClick() }, Modifier.testTag("forward-session-${s.sessionId}"),
         position = position, statusText = if (s.assistant) null else status.localizedLabel,
         preview = if (s.assistant) persona else s.spaceName?.takeIf { it.isNotBlank() } ?: s.folderName,
-        agent = s.agentLabel.takeIf { !s.assistant && (s.isCodex || s.agent == "traex") },
+        agent = s.agentLabel.takeIf { !s.assistant && (s.isCodex || s.agent == "traex" || s.agent == "traecli") },
         facts = machine?.let { listOf(RowFact(it)) }.orEmpty(),
         agentMark = if (s.assistant) AgentMarkSpec(null, persona, null) else s.agentMark, muted = !enabled,
         end = if (busy) ({ JSpinner() }) else null)

@@ -101,7 +101,10 @@ class MachinesShotsTest {
         override suspend fun refresh() = Unit
     }
     private val management = object : MachineManagement {
-        override suspend fun launchers(machineId: String) = listOf(AgentLauncher("claude", model = "anthropic/claude-opus-5"), AgentLauncher("codex"))
+        override suspend fun launchers(machineId: String) = listOf(
+            AgentLauncher("claude", model = "anthropic/claude-opus-5"), AgentLauncher("codex"),
+            AgentLauncher("traex", agentType = "traex"),
+        )
         override suspend fun launcherQuota(machineId: String, name: String, refresh: Boolean) = LauncherQuotaAnswer()
         override suspend fun reconnect(machineId: String) = Unit
         override suspend fun deploy(machineId: String) = Unit
@@ -145,8 +148,10 @@ class MachinesShotsTest {
             val name = "machines-${if (d) "detail" else "list"}-$language-${s.name.lowercase()}-${if (dk) "dark" else "light"}.png"
             File(out(), name).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
             rule.onNodeWithText(if (d) detail else listTitle).assertExists()
-            if (d) rule.onNodeWithText(botmux).assertExists()
-            else {
+            if (d) {
+                rule.onNodeWithText(botmux).assertExists()
+                rule.onNodeWithText("TraeCLI").assertExists()
+            } else {
                 rule.onNodeWithText(offline).assertExists()
                 rule.onNodeWithText(mac.error!!).assertExists() // the hub's own words stay, after the plain ones
             }

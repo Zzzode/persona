@@ -183,11 +183,15 @@ internal fun LazyListScope.machineLaunchers(online: Boolean, state: MachineActio
     }
     itemsIndexed(launchers, key = { _, it -> "launcher-${it.name}" }, contentType = { _, _ -> "launcher" }) { index, launcher ->
         val model = launcherModel(launcher)
+        val title = when (launcher.agentType) {
+            "traex", "traecli" -> launcher.title
+            else -> launcher.name
+        }
         JGroupItem(GroupPosition.of(index, launchers.size)) {
             JRow(chevron = onLauncher != null, onClick = onLauncher?.let { open -> { open(launcher.name) } }, trailing = if (model == null) null else ({
                 Text(model, style = PersonaTheme.type.caption, color = PersonaTheme.palette.ink3, maxLines = 1, overflow = TextOverflow.Ellipsis)
             })) {
-                Text(launcher.name, style = PersonaTheme.type.code, color = PersonaTheme.palette.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, style = PersonaTheme.type.code, color = PersonaTheme.palette.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }

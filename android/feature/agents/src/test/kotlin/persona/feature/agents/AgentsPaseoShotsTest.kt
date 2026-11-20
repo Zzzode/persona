@@ -148,7 +148,7 @@ class AgentsPaseoShotsTest {
                 assertTrue("$title in $look", rule.onAllNodesWithText(title, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
             }
             // The rows' marks, by their providers' names: Grok's letter, TRAE's mark, the unlabelled one's launcher, Claude Code.
-            for (said in listOf("Grok", "TRAE CLI", "kimi", "Claude Code")) {
+            for (said in listOf("Grok", "TraeCLI", "kimi", "Claude Code")) {
                 assertTrue("$said's mark in $look", rule.onAllNodesWithContentDescription(said, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty())
             }
             // The engine's name is nowhere on the page.

@@ -6,8 +6,19 @@ use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use persona_core::sort::Input;
+use persona_core::sort::{Input, Session};
 use serde_json::Value;
+
+#[test]
+fn traecli_has_one_display_name_for_both_identifiers() {
+    for agent in ["traex", "traecli"] {
+        let session = Session {
+            agent: Some(agent.to_owned()),
+            ..Session::default()
+        };
+        assert_eq!(session.agent_label(), "TraeCLI");
+    }
+}
 
 fn fixture_dir() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../spec/fixtures/sort")

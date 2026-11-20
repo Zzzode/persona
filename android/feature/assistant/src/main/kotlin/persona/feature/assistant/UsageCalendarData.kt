@@ -14,7 +14,7 @@ internal fun usageAgentMark(id: String): AgentMarkSpec? {
         "claude" -> "Claude Code"
         "codex" -> "Codex"
         "trae" -> "TRAE"
-        "traex" -> "TRAEX"
+        "traex", "traecli" -> "TraeCLI"
         "omp" -> "Oh My Pi"
         "gemini" -> "Gemini CLI"
         "cursor" -> "Cursor"

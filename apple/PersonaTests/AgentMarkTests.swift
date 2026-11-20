@@ -25,13 +25,35 @@ struct AgentMarkTests {
         }
     }
 
-    @Test func traeHasItsMarkAndTraexItsLetter() {
+    @Test func traeAndTraeCLIKeepTheirExistingMarks() {
         #expect(AgentKind(Self.session(#","agent":"trae""#)).brand == Theme.Brand.trae)
-        #expect(AgentKind(Self.session(#","agent":"trae-cli""#)).brand == Theme.Brand.trae)
-        let traex = AgentKind(Self.session(#","agent":"traex""#))
-        #expect(traex.brand == nil && traex.letter == "T" && traex.name == "TRAEX")
+        for id in ["traex", "traecli", "trae-cli"] {
+            let session = Self.session(",\"agent\":\"\(id)\"")
+            let mark = AgentKind(session)
+            #expect(session.agentLabel == "TraeCLI" && mark.name == "TraeCLI" && mark.letter == "T")
+            #expect(mark.brand == (id == "traex" ? nil : Theme.Brand.trae))
+        }
         let dsh = AgentKind(Self.session(#","agent":"dsh","agent_label":"DSH""#))
         #expect(dsh.brand == Theme.Brand.dsh)
+    }
+
+    @Test func namesTheBuiltinLauncherOnOlderHubs() {
+        #expect(Launcher(name: "traex", baseURL: "(traex)").title == "TraeCLI")
+        #expect(Launcher(name: "traex", agent: "traex", source: "path").title == "TraeCLI")
+        #expect(Launcher(name: "traex", displayName: "My CLI", agent: "traex").title == "My CLI")
+        #expect(Launcher(name: "team-cli", agent: "traex").title == "team-cli")
+        #expect(Launcher(name: "traex", agent: "paseo", source: "paseo").title == "traex")
+    }
+
+    @MainActor @Test func shareCardsKeepTheBuiltInTerminalMarkWhenTheNameChanges() {
+        let menu = MessageMenu()
+        menu.session = { Self.session(#","agent":"traex""#) }
+        let legacy = menu.shareMessage(text: "Example", isUser: false, date: nil)
+        #expect(legacy.agent == "TraeCLI" && legacy.showsTerminalMark)
+
+        menu.session = { Self.session(#","agent":"traecli""#) }
+        let cli = menu.shareMessage(text: "Example", isUser: false, date: nil)
+        #expect(cli.agent == "TraeCLI" && !cli.showsTerminalMark)
     }
 
     /// A Paseo provider that is neither Claude Code nor Codex (`agent` "paseo", #8144): named by its label, else its
@@ -44,8 +66,13 @@ struct AgentMarkTests {
         #expect(engine.brand == Theme.Brand.grok && engine.name == "grok")
         #expect(AgentKind(Self.session(#","agent":"paseo","launcher":"kimi""#)).name == "kimi")
         // TRAE by its label, or by its launcher when the row names only the engine.
-        #expect(AgentKind(Self.session(#","agent":"paseo","agent_label":"Trae CLI","launcher":"traecli""#)).brand == Theme.Brand.trae)
-        #expect(AgentKind(Self.session(#","agent":"paseo","agent_label":"Paseo","launcher":"traecli""#)).brand == Theme.Brand.trae)
+        for label in ["Trae CLI", "Paseo"] {
+            let session = Self.session(",\"agent\":\"paseo\",\"agent_label\":\"\(label)\",\"launcher\":\"traecli\"")
+            let mark = AgentKind(session)
+            #expect(session.agentLabel == "TraeCLI" && mark.name == "TraeCLI" && mark.brand == Theme.Brand.trae)
+        }
+        let customTraeCLI = Self.session(#","agent":"paseo","agent_label":"My CLI","launcher":"traecli""#)
+        #expect(customTraeCLI.agentLabel == "My CLI")
         // A runtime's reported agent keeps its own mark even when its launcher names a different product.
         let dsh = AgentKind(Self.session(#","agent":"dsh","agent_label":"DSH","launcher":"trae""#))
         #expect(dsh.brand == Theme.Brand.dsh && dsh.name == "DSH")
@@ -56,8 +83,7 @@ struct AgentMarkTests {
         #expect(AgentKind.brand(named: "trae-cli") == Theme.Brand.trae)
         #expect(AgentKind.brand(named: "Claude Code") == Theme.Brand.claude)
         #expect(AgentKind.brand(named: "Codex") == Theme.Brand.openAI)
-        // TRAEX is an in-house Codex fork, not TRAE; an unknown provider has no mark.
-        #expect(AgentKind.brand(named: "TRAEX") == nil)
+        #expect(AgentKind.brand(named: "TraeCLI") == Theme.Brand.trae)
         #expect(AgentKind.brand(named: "Grok · Official") == Theme.Brand.grok)
         #expect(AgentKind.brand(named: "Grok Build") == Theme.Brand.grok)
         #expect(AgentKind.brand(named: "Google Antigravity") == Theme.Brand.agy)

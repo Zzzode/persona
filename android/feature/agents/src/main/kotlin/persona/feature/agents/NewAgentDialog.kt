@@ -473,7 +473,12 @@ internal fun startable(state: NewAgentState, machines: List<Machine>): Boolean =
         machines.any { it.id == state.machineId && it.online } &&
         (!state.promptRequired || state.prompt.isNotBlank() || usableForward(state.context) != null) && state.attachmentsHold == null
 
-internal fun String.agentLabel() = when (this) { "claude" -> "Claude Code"; "codex" -> "Codex"; "traex" -> "TRAEX"; else -> this }
+internal fun String.agentLabel() = when (this) {
+    "claude" -> "Claude Code"
+    "codex" -> "Codex"
+    "traex", "traecli" -> "TraeCLI"
+    else -> this
+}
 
 /**
  * What the "Agent type" list calls a launcher's agent type ([agentLabel]): Paseo's providers other than Claude Code and

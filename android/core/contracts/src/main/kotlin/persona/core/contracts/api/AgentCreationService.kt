@@ -1,7 +1,10 @@
 package persona.core.contracts.api
 
 import persona.core.contracts.CoreText
+import persona.core.contracts.PaseoAgent
 import persona.core.contracts.Session
+import persona.core.contracts.TraeCliDisplayName
+import persona.core.contracts.unknownAgentName
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.KeepGeneratedSerializer
@@ -213,7 +216,7 @@ data class AgentLauncher(
     val source: String? = null,
 ) {
     /** What people read for it: its display name, else its startup name (the web's `providerTitle`). */
-    val title: String get() = displayName?.trim()?.takeIf(String::isNotEmpty) ?: name
+    val title: String get() = launcherTitle(name, agentType, displayName?.trim()?.takeIf(String::isNotEmpty))
 }
 
 /**
@@ -293,7 +296,14 @@ data class UnavailableLauncher(
     val code: String = "",
     val reason: String = "",
 ) {
-    val title: String get() = displayName?.trim()?.takeIf(String::isNotEmpty) ?: name
+    val title: String get() = launcherTitle(name, agent, displayName?.trim()?.takeIf(String::isNotEmpty))
+}
+
+internal fun launcherTitle(name: String, agent: String?, displayName: String?): String = when {
+    agent == PaseoAgent && name == "traecli" -> unknownAgentName(agent, displayName, name)
+    displayName != null -> displayName
+    (agent == "traex" || agent == "traecli") && (name == "traex" || name == "traecli") -> TraeCliDisplayName
+    else -> name
 }
 
 /**

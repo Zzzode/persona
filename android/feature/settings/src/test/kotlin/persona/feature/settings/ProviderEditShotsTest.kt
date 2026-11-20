@@ -54,6 +54,7 @@ class ProviderEditShotsTest {
         gateway, HubLauncher("cx_team", source = "persona", agent = "codex", baseUrl = "https://codex.example.com", model = "cx-1", hasKey = true, share = "all"),
         HubLauncher("triage_api", source = "persona", kind = "api", api = "responses", baseUrl = "https://api.example.com/v1", model = "api-mini", hasKey = true, share = "none"),
         HubLauncher("cc_local", source = "zshrc", model = "claude-sonnet", machines = listOf("mac")),
+        HubLauncher("traex", agent = "traex", machines = listOf("mac")),
     )
 
     private val providers = object : ProviderSetup {
@@ -117,6 +118,7 @@ class ProviderEditShotsTest {
             page = "legacy"; capture("provider-computers-legacy-$suffix")
             page = "proxy"; capture("provider-proxy-$suffix")
             page = "list"; capture("providers-grouped-$suffix")
+            rule.onNodeWithText("TraeCLI").assertExists()
         }
     }
 }

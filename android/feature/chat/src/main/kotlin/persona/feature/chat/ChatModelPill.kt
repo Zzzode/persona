@@ -26,6 +26,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.json.*
 import persona.core.contracts.ModelPick
+import persona.core.contracts.PaseoAgent
 import persona.core.contracts.PendingSwitch
 import persona.core.contracts.Session
 import persona.core.contracts.api.AgentCreationService
@@ -34,6 +35,7 @@ import persona.core.contracts.api.AssistantLaunchers
 import persona.core.contracts.api.AssistantManagement
 import persona.core.contracts.api.ChatAction
 import persona.core.contracts.api.LauncherModels
+import persona.core.contracts.unknownAgentName
 import persona.core.designsystem.*
 import persona.core.domain.models.AgentModelPanel
 import persona.core.domain.models.ModeStep
@@ -190,8 +192,8 @@ internal fun rememberPanelPrefs(scope: PanelScope): MutableState<PanelPrefs> {
 internal fun engineMark(engine: String, name: String? = null): AgentMarkSpec = when (val kind = knownAgentMark(engine)) {
     AgentMarkKind.Claude -> AgentMarkSpec(kind, "Claude Code", null)
     AgentMarkKind.Codex -> AgentMarkSpec(kind, "Codex", null)
-    AgentMarkKind.Trae -> AgentMarkSpec(kind, "TRAE", null)
-    else -> AgentMarkSpec(kind, name?.takeIf(String::isNotBlank) ?: engine, null)
+    AgentMarkKind.Trae -> AgentMarkSpec(kind, if (engine == "traecli") unknownAgentName(PaseoAgent, name, engine) else "TRAE", null)
+    else -> AgentMarkSpec(kind, if (engine == "traex") "TraeCLI" else name?.takeIf(String::isNotBlank) ?: engine, null)
 }
 
 /** An effort as the pill says it: Very high is "Extra" there (the web's pill-only word), the rest their names. */

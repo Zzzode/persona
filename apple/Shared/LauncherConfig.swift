@@ -74,8 +74,11 @@ nonisolated struct LauncherView: Codable, Identifiable, Hashable, Sendable {
     /// A direct API connection's Send Through: the computer whose node sends its requests; nil the hub itself.
     var viaMachine: String?
     var id: String { name }
-    /// What a person reads: the display name, else the name.
-    var title: String { displayName.flatMap { $0.trimmingCharacters(in: .whitespaces).isEmpty ? nil : $0 } ?? name }
+    /// What a person reads: its display name, the built-in CLI's name on older hubs, or the startup name.
+    var title: String {
+        if let displayName, !displayName.trimmingCharacters(in: .whitespaces).isEmpty { return displayName }
+        return Launcher.legacyTraeCLITitle(name: name, source: source, agent: agent, baseURL: baseURL) ?? name
+    }
     var managed: Bool { source == "persona" || source == LegacyNames.product }
     /// A wrapper script on a computer's PATH (#5954) rather than a ~/.zshrc function.
     var pathScript: Bool { source == "path" }
@@ -193,7 +196,7 @@ nonisolated struct LauncherDetail: Codable, Hashable, Sendable {
     var agentName: String {
         switch agent {
         case "codex": "Codex"
-        case "traex": "TRAEX"
+        case "traex", "traecli", "trae-cli": Session.traeCLIName
         default: "Claude Code"
         }
     }
