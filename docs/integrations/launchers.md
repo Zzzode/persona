@@ -33,7 +33,8 @@ cut short by this budget uses the last answer if one exists. On a shell timeout 
 last known shell and PATH launchers and the providers in its current scope.
 Runtime launchers require a live response. Confirmed unavailable providers still show their reason. If the picker has
 neither available nor unavailable entries, it returns a timeout so the client can offer Retry. The node bounds the
-shell scan and stops its child processes when it times out.
+shell scan and stops its child processes when it times out. An incomplete scan keeps the previous launcher list for
+one more minute when one exists.
 
 ## External model adapters (#7940)
 

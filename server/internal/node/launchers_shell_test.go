@@ -108,13 +108,17 @@ exit 1
 		t.Fatalf("cached launcher list at refresh start = %v, want %v", got, stale)
 	}
 	waitFor(t, "launcher scan startup", func() bool { _, err := os.Stat(started); return err == nil })
+	type answer struct {
+		list []proto.Launcher
+		err  error
+	}
 	const requests = 5
-	ready, done := make(chan struct{}), make(chan error, requests)
+	ready, done := make(chan struct{}), make(chan answer, requests)
 	for range requests {
 		go func() {
 			ready <- struct{}{}
-			_, err := n.launchers(t.Context())
-			done <- err
+			list, err := n.launchers(t.Context())
+			done <- answer{list, err}
 		}()
 	}
 	for range requests {
@@ -131,19 +135,28 @@ exit 1
 	deadline := time.After(10 * time.Second)
 	for range requests {
 		select {
-		case err := <-done:
-			if err == nil {
-				t.Error("expected the shell failure to reach every caller")
+		case got := <-done:
+			if got.err != nil || !slices.Equal(got.list, stale) {
+				t.Errorf("launcher list after scan failure = %v, error = %v, want %v", got.list, got.err, stale)
 			}
 		case <-deadline:
 			t.Fatal("launcher requests did not return after the shell exited")
 		}
 	}
 	waitFor(t, "failed background launcher refresh", refreshFinished)
+	if list, err := n.launchers(t.Context()); err != nil || !slices.Equal(list, stale) {
+		t.Fatalf("launcher list before the fallback expires = %v, error = %v, want %v", list, err, stale)
+	}
+	if got := readCached(); !slices.Equal(got, stale) {
+		t.Fatalf("cached launcher list before the fallback expires = %v, want %v", got, stale)
+	}
 	if starts, err := os.ReadFile(started); err != nil || string(starts) != "start\n" {
-		t.Fatalf("concurrent calls started %q, %v", starts, err)
+		t.Fatalf("concurrent calls and fallback reads started %q, %v", starts, err)
 	}
 	writeFile(t, rc, recordStart+"alias retry_test='claude --model model-a'\n")
+	launcherCache.Lock()
+	launcherCache.at = time.Now().Add(-2 * time.Minute)
+	launcherCache.Unlock()
 	for range 2 {
 		list, err := n.launchers(t.Context())
 		if err != nil || byName(list)["retry_test"].Model != "model-a" {
