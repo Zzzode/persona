@@ -404,7 +404,7 @@ func TestUsagePollKeepsCodexSamplesWithoutMatchingKeysApart(t *testing.T) {
 	}
 }
 
-func TestUsagePollKeepsCodexRowIDsWhenTheSourcesChangeOrder(t *testing.T) {
+func TestUsagePollDistinguishesUnidentifiedCodexHomesOnOneMachine(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 	sample := func(key string, used float64) proto.UsageNodeAccount {
 		return proto.UsageNodeAccount{
@@ -416,18 +416,24 @@ func TestUsagePollKeepsCodexRowIDsWhenTheSourcesChangeOrder(t *testing.T) {
 	source := usageSource{id: "mac", online: true, ask: func(context.Context) (proto.UsageSnapshot, error) {
 		return proto.UsageSnapshot{Enabled: true, Accounts: accounts}, nil
 	}}
-	rowIDs := func(accounts []proto.UsageAccount) map[float64]string {
-		ids := map[float64]string{}
+	type row struct{ id, name string }
+	rows := func(accounts []proto.UsageAccount) map[float64]row {
+		result := map[float64]row{}
 		for _, account := range accounts {
-			ids[mostUsed(account)] = account.ID
+			result[mostUsed(account)] = row{account.ID, account.Name}
 		}
-		return ids
+		return result
 	}
 	var u usageWindowsHub
-	first := rowIDs(u.poll(context.Background(), []usageSource{source}, now))
+	first := rows(u.poll(context.Background(), []usageSource{source}, now))
+	names := []string{first[10].name, first[20].name}
+	slices.Sort(names)
+	if len(first) != 2 || first[10].id == first[20].id || !slices.Equal(names, []string{"Codex Pro", "Codex Pro 2"}) {
+		t.Fatalf("two same-name homes on one machine need distinct IDs and names: %v", first)
+	}
 	slices.Reverse(accounts)
-	after := rowIDs(u.poll(context.Background(), []usageSource{source}, now.Add(usageHubFresh)))
-	if len(first) != 2 || !maps.Equal(first, after) {
-		t.Errorf("changing the source order changed the row IDs: %v to %v", first, after)
+	after := rows(u.poll(context.Background(), []usageSource{source}, now.Add(usageHubFresh)))
+	if !maps.Equal(first, after) {
+		t.Errorf("changing the source order changed the row IDs or names: %v to %v", first, after)
 	}
 }

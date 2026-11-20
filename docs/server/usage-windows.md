@@ -55,7 +55,7 @@ The gateway's `rate_limits.spend_limit` (an amount of money) is not a window and
   - Samples older than 30 minutes are marked `stale` (sorted last, faded in the UI and labeled "out of date"); windows older than 3 days or past their reset time are dropped.
     Each account also says when it turns stale if nothing newer comes, `stale_at` (the newest sample's time plus its source's threshold: 30 minutes for a computer, 6 hours for a gateway). A client keeping an answer while refreshes fail judges it again with `stale || now >= stale_at`, so old numbers fade and read "out of date" however long ago it last heard from the hub, and no client hard-codes the thresholds (#1905).
   - **Every row has its own id** (clients use it as the row key, #1904). Codex row IDs are derived from the account or reporting source and stay stable across resets. Other providers use a digest of the longest plan window with the gateway reference or reporting source where needed. The node's grouping keys and the raw upstream ID stay out of the client response.
-  - Known accounts with the same name are numbered by id. Codex reports without a verified account keep their plan names and use the existing source labels to tell them apart.
+  - Known accounts with the same name are numbered by id. Codex reports without a verified account use the existing source labels and are numbered only when the name and visible sources are identical.
   - Sorted by the fullest window, highest first.
 
 API (read-only, not usable with extension tokens, `testdata/route_scopes.txt`):

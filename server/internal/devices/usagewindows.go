@@ -375,15 +375,23 @@ func mergeUsageAccounts(in []proto.UsageAccount, now time.Time) []proto.UsageAcc
 			out[i].ID = fmt.Sprintf("%s-%d", out[i].ID, n)
 		}
 	}
-	// Number same-name accounts by ID. An unidentified Codex sample is described by its source, not an account number.
-	count := map[string]int{}
+	// Number same-name accounts by ID. For unidentified Codex samples, only number rows with the same visible source.
+	type titleGroup struct {
+		name, machines, gateways string
+		unidentified             bool
+	}
+	count := map[titleGroup]int{}
 	for i := range out {
-		if out[i].Provider == "codex" && out[i].CodexAccountKey == "" {
-			continue
+		a := &out[i]
+		group := titleGroup{name: a.Name}
+		if a.Provider == "codex" && a.CodexAccountKey == "" {
+			group.unidentified = true
+			group.machines = strings.Join(a.Machines, "\x00")
+			group.gateways = strings.Join(a.Sources, "\x00")
 		}
-		count[out[i].Name]++
-		if n := count[out[i].Name]; n > 1 {
-			out[i].Name = fmt.Sprintf("%s %d", out[i].Name, n)
+		count[group]++
+		if n := count[group]; n > 1 {
+			a.Name = fmt.Sprintf("%s %d", a.Name, n)
 		}
 	}
 	sort.SliceStable(out, func(i, j int) bool {
