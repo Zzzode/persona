@@ -34,8 +34,8 @@ last known shell and PATH launchers and the providers in its current scope.
 Runtime launchers require a live response. Confirmed unavailable providers still show their reason. If the picker has
 neither available nor unavailable entries, it returns a timeout so the client can offer Retry. The node bounds the
 shell scan and stops its child processes when it times out. An incomplete scan keeps the previous launcher list for
-one more minute when one exists. Retry asks the node to scan again. If the new scan is slow, the picker can read the
-node's completed snapshot within the same 10-second discovery budget.
+one more minute when one exists. Retry asks the node to scan again. If the new scan is slow or fails, the picker can
+read the node's ordinary launcher list within the same 10-second discovery budget.
 
 ## External model adapters (#7940)
 

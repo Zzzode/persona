@@ -20,10 +20,11 @@ import (
 
 var launcherCache struct {
 	sync.Mutex
-	at       time.Time
-	list     []proto.Launcher
-	fetch    singleflight.Group // concurrent asks share the login shell's result, including failure
-	fetching bool               // a background refresh (cachedLaunchers) is running
+	at         time.Time
+	list       []proto.Launcher
+	generation uint64             // incremented whenever a discovery publishes a new list
+	fetch      singleflight.Group // concurrent asks share the login shell's result, including failure
+	fetching   bool               // a background refresh (cachedLaunchers) is running
 	// codex: how each Codex launcher runs (codex_start.go), its words as the shell would run them.
 	codex map[string][]string
 	// settings: the --settings a claude alias brings itself, as its words give it (launcher_settings.go).
@@ -91,60 +92,75 @@ func launcherOutput(out string) (string, bool) {
 
 // launchers lists the launchers of this machine's login shell: the `_claude_launchers` helper's (claude wrapper
 // functions), then every alias that runs claude (`alias dmcc="ANTHROPIC_BASE_URL=… claude …"`), by name. A name
-// the helper lists is not repeated; none at all: plain claude.
+// the helper lists is not repeated; none at all: plain claude. A forced refresh requires a discovery newer than the
+// one visible when the request arrived, and reports a failed scan even when an older list exists.
 func (n *Node) launchers(ctx context.Context, refresh ...bool) ([]proto.Launcher, error) {
-	force := len(refresh) > 0 && refresh[0]
-	if !force {
-		if list := freshLauncherList(); list != nil {
-			return list, nil
-		}
+	forced := len(refresh) > 0 && refresh[0]
+	launcherCache.Lock()
+	observed := launcherCache.generation
+	cached := launcherCache.list
+	fresh := time.Since(launcherCache.at) < time.Minute
+	launcherCache.Unlock()
+	if !forced && fresh && cached != nil {
+		return cached, nil
 	}
+
 	type discovery struct {
-		list      []proto.Launcher
-		fromCache bool
+		list       []proto.Launcher
+		generation uint64
 	}
 	read := func() (any, error) {
-		// A scan may have completed between the first cache read and entry into the group.
-		if !force {
-			if list := freshLauncherList(); list != nil {
-				return discovery{list: list, fromCache: true}, nil
-			}
+		// A scan may have completed between the initial cache read and entry into the group.
+		launcherCache.Lock()
+		current := discovery{list: launcherCache.list, generation: launcherCache.generation}
+		fresh := time.Since(launcherCache.at) < time.Minute
+		launcherCache.Unlock()
+		if current.list != nil && (current.generation != observed || (!forced && fresh)) {
+			return current, nil
 		}
-		// A caller can give up before the shell finishes. The scan still updates the cache for the next ask.
-		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		// Only a scan that has started outlives its caller. It can still populate the cache for a later ask.
+		scanCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
 		defer cancel()
-		out, err := scanLaunchers(ctx)
+		out, err := scanLaunchers(scanCtx)
 		if err != nil {
-			list, err := lastLaunchers(err)
-			return discovery{list: list}, err
+			return nil, err
 		}
 		list, codex, settings, scripts := mergeLaunchers(string(out))
 		launcherCache.Lock()
 		launcherCache.at, launcherCache.list, launcherCache.codex, launcherCache.settings = time.Now(), list, codex, settings
 		launcherCache.scripts = scripts
+		launcherCache.generation++
+		current = discovery{list: list, generation: launcherCache.generation}
 		launcherCache.Unlock()
-		return discovery{list: list}, nil
+		return current, nil
 	}
 	for {
-		result, err, _ := launcherCache.fetch.Do("shell", read)
-		if err != nil {
+		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+		result, err, _ := launcherCache.fetch.Do("shell", read)
+		if err != nil {
+			if canceled := ctx.Err(); canceled != nil {
+				return nil, canceled
+			}
+			if err == context.Canceled || err == context.DeadlineExceeded {
+				// The group's leader was canceled before starting a scan. A live caller can still start one.
+				continue
+			}
+			if forced {
+				return nil, err
+			}
+			return lastLaunchers(err)
+		}
 		got := result.(discovery)
-		// A forced request can share another scan, but a cache-only read still needs a scan.
-		if !force || !got.fromCache {
+		// An ordinary cache hit shared through the group cannot satisfy a forced request for newer data.
+		if !forced || got.generation != observed {
 			return got.list, nil
 		}
 	}
-}
-
-func freshLauncherList() []proto.Launcher {
-	launcherCache.Lock()
-	defer launcherCache.Unlock()
-	if time.Since(launcherCache.at) >= time.Minute {
-		return nil
-	}
-	return launcherCache.list
 }
 
 func scanLaunchers(ctx context.Context) ([]byte, error) {
@@ -289,7 +305,41 @@ func (n *Node) inferLauncher(id string) string {
 	if !ok {
 		return ""
 	}
-	return matchLauncher(n.cachedLaunchers(), env.BaseURL, env.Model)
+	if name := matchLauncher(n.cachedLaunchers(), env.BaseURL, env.Model); name != "" {
+		return name
+	}
+	return matchLauncher(n.managedInferLaunchers(), env.BaseURL, env.Model)
+}
+
+// managedInferLaunchers returns the cached Claude managed-launcher projection so a terminal session started manually
+// with `personad launch <name>` can infer its managed launcher when the endpoint/model match is unambiguous.
+func (n *Node) managedInferLaunchers() []proto.Launcher {
+	if n == nil {
+		return nil
+	}
+	n.managed.mu.Lock()
+	if n.managed.infer == nil && len(n.managed.byID) > 0 {
+		n.managed.infer = buildManagedInferLaunchers(n.managed.byID)
+	}
+	out := n.managed.infer
+	n.managed.mu.Unlock()
+	return out
+}
+
+func buildManagedInferLaunchers(byID map[string]proto.ManagedLauncher) []proto.Launcher {
+	if len(byID) == 0 {
+		return nil
+	}
+	out := make([]proto.Launcher, 0, len(byID))
+	for _, l := range byID {
+		if a := l.AgentType(); a != "" && a != "claude" {
+			continue
+		}
+		pm, _ := providerModel(l, l.Model)
+		out = append(out, proto.Launcher{Name: l.Name, BaseURL: managedBaseURL(l), Model: sdkModel(l.Model, pm)})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 // matchLauncher picks the launcher that exports this base URL and model. Several launchers can share one endpoint
@@ -306,7 +356,7 @@ func matchLauncher(list []proto.Launcher, baseURL, model string) string {
 			continue
 		}
 		byURL = append(byURL, l.Name)
-		if model != "" && l.Model == model {
+		if model != "" && (l.Model == model || l.Model != "" && proto.TrimModelWindow(l.Model) == proto.TrimModelWindow(model)) {
 			byBoth = append(byBoth, l.Name)
 		}
 	}

@@ -41,13 +41,13 @@ func (s *Service) listLaunchers(ctx context.Context, d Device, refresh ...bool) 
 		return res, err
 	}
 	if len(refresh) > 0 && refresh[0] {
-		// Retry starts a real scan. Reserve part of the same budget to read a completed node snapshot if the scan is slow.
+		// Retry starts a real scan. Reserve part of the same budget for an ordinary read of the node's usable entries
+		// if the scan is slow or fails. Execution recovery uses machineLaunchersOn and requires a successful scan.
 		reserve := min(time.Second, launcherSyncTimeout/2)
 		rctx, stop := context.WithTimeout(cctx, launcherSyncTimeout-reserve)
 		res, err := read(rctx, map[string]any{"refresh": true})
-		timedOut := errors.Is(rctx.Err(), context.DeadlineExceeded) || apierr.NodeCode(err) == "timeout"
 		stop()
-		if err == nil || !timedOut {
+		if err == nil || cctx.Err() != nil {
 			return res, err
 		}
 	}
@@ -212,27 +212,41 @@ type machineLauncherListing struct {
 	HostRuntime bool                     `json:"host_runtime"`
 }
 
+type launcherRefreshKey struct{}
+
+// withLauncherRefresh asks the node to replace its ordinary one-minute shell-launcher snapshot. It is used only for
+// bounded recovery of a specific Assistant launcher, not ordinary picker loads.
+func withLauncherRefresh(ctx context.Context) context.Context {
+	return context.WithValue(ctx, launcherRefreshKey{}, true)
+}
+
 // known distinguishes an explicit node list (including []) from a missing/null catalog on an older node.
 func (s *Service) machineLaunchersOn(ctx context.Context, machine, host string) (list []proto.Launcher, hostRuntime, known bool, err error) {
 	var res machineLauncherListing
 	params := map[string]any{}
+	if refresh, _ := ctx.Value(launcherRefreshKey{}).(bool); refresh {
+		params["refresh"] = true
+	}
 	if host != "" {
 		params["host"] = host
 	}
 	if err := s.call(ctx, machine, DeviceLaunchersList, params, &res); err != nil {
 		return nil, false, false, err
 	}
-	list, hostRuntime = s.machineLaunchersFrom(ctx, machine, res)
+	list, hostRuntime = s.machineLaunchersFrom(ctx, machine, res, true)
 	return list, hostRuntime, res.Launchers != nil, nil
 }
 
-func (s *Service) machineLaunchersFrom(ctx context.Context, machine string, res machineLauncherListing) ([]proto.Launcher, bool) {
+// machineLaunchersFrom is machine's list from res, its node's answer. ask: a provider's own-service rule may ask the
+// node as the pickers do (usableOn); false goes by what it said before only (usableOnAsking), for a status that asks no
+// node.
+func (s *Service) machineLaunchersFrom(ctx context.Context, machine string, res machineLauncherListing, ask bool) ([]proto.Launcher, bool) {
 	d, _ := s.device(ctx, machine)
 	hidden := s.hiddenLaunchers(ctx)
 	// Only the providers in this computer's scope: one out of it is not named to the node, whose own launcher by
 	// that name (if any) is what runs there.
 	managed := slices.DeleteFunc(slices.Clone(s.storedLaunchers(ctx)), func(m storedLauncher) bool {
-		return proto.IsExternalLauncher(m.Name) || !s.usableOn(ctx, m, machine)
+		return proto.IsExternalLauncher(m.Name) || !s.usableOnAsking(ctx, m, machine, ask)
 	})
 	if res.HostRuntime {
 		managed = slices.DeleteFunc(managed, func(m storedLauncher) bool { return m.Agent != "agy" })
@@ -337,7 +351,7 @@ func (s *Service) assistantPickerLaunchers(ctx context.Context, d Device, refres
 		for _, l := range listing.Launchers {
 			res.Launchers = append(res.Launchers, proto.LauncherEnvelope(l))
 		}
-		launchers, _ := s.machineLaunchersFrom(ctx, d.ID, res)
+		launchers, _ := s.machineLaunchersFrom(ctx, d.ID, res, true)
 		picker = s.pickerLaunchersFrom(ctx, d.ID, launchers)
 	}
 	fits, err = s.assistantLaunchersOf(ctx, d.ID, picker)
@@ -349,6 +363,19 @@ func (s *Service) assistantPickerLaunchers(ctx context.Context, d Device, refres
 		err = syncErr
 	}
 	return picker, fits, unavailable, err
+}
+
+// pickerLaunchersSeen is pickerLaunchers from seen, machine's own launchers as last seen, without asking its node for
+// them: the same rule (machineLaunchersFrom: a Persona-managed provider in the computer's scope takes the place of its
+// own launcher by that name, a hidden one is left out), then hub.json's launchers for it (sessionLaunchers). ask is
+// machineLaunchersFrom's: false asks the node nothing at all.
+func (s *Service) pickerLaunchersSeen(ctx context.Context, machine string, seen []proto.Launcher, ask bool) []ConfiguredLauncher {
+	res := machineLauncherListing{}
+	for _, l := range seen {
+		res.Launchers = append(res.Launchers, proto.LauncherEnvelope(l))
+	}
+	list, _ := s.machineLaunchersFrom(ctx, machine, res, ask)
+	return s.pickerLaunchersFrom(ctx, machine, list)
 }
 
 // assistantLaunchers are the machine's launchers backed by a provider the main conversation supports.

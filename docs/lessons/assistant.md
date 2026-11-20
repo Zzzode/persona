@@ -189,7 +189,7 @@ Pitfalls, unusual behavior, and decisions at the time (formerly `CLAUDE.md`; ind
 
 - Push delivery is per destination, not just per conversation (#1896). A shared `notify_user` mark lets one successful channel suppress another channel's failed delivery, while an unmarked extension push duplicates its turn-end mirror. Key delivery by channel, machine and session, record only confirmed sends, and apply the same check to main-chat mirrors, scheduled-task mirrors and Lark mirror retries. Test mixed successes and failures, including text split across several sends.
 
-- A copy sent beside a filtered push must follow the filter's answer, and the answer about it must count the copy (#8268). `notify_user` copied every notice to the Feishu bot and the channels after `notify.request`, without reading `held`, so low-distraction mode held nothing for an owner who reads Persona through the bot; and with that owner's phone pushes off the tool answered "the user was not alerted" for a notice whose Feishu copy had landed, and the conversation sent it again. Gate the copy on the hub's answer for the same push (not on the assistant's own reading of the switch: the hub levels by conversation and related key), and say in the tool's answer which copies went out, failed or are not confirmed yet.
+- A copy sent beside a filtered push must follow the filter's answer, and the answer about it must count the copy (#8268). `notify_user` copied every notice to the Feishu bot and the channels after `notify.request`, without reading `held`, so push grading held nothing for an owner who reads Persona through the bot; and with that owner's phone pushes off the tool answered "the user was not alerted" for a notice whose Feishu copy had landed, and the conversation sent it again. Gate the copy on the hub's answer for the same push (not on the assistant's own reading of the switch: the hub levels by conversation and related key), and say in the tool's answer which copies went out, failed or are not confirmed yet.
 
 - A one-shot send that forgets its record on failure loses what it was for (2026-11-07, #7). The "Please verify" card is asked once, when a task's deploying turn ends; a failed or timed-out send used to drop the claim, and nothing asked the owner again. Keep the record (the ask, without a message id) and retry from a sweep, under a key per round (`uuid`) so a timeout that did land is not a second card, and only within the hour Feishu remembers a key (`acceptPostWindow`, as the nudge's `nudgeRetryWindow`); past it, fall back to the card-less path the briefing and board already show. Whatever a sweep or a load reads back may hold a claim saved mid-flight (no time) or a null entry: clean the map that was read, before it becomes the book, and never dereference an entry unchecked.
 
@@ -867,3 +867,18 @@ A relay refusal was classified with `errors.As(err, &rpc.Error{})` alone. That m
 `apierr.ErrOffline` with no code at all. Read from the code, `conversation_send` to a computer that was away returned
 the error instead of queueing the message as #10194 meant it to. Read a code from either shape (`relayErrCode`) and
 test each failure in the shape production delivers it (`busError(&rpc.Error{…})`), not only as a bare `*rpc.Error`.
+
+## A plan's new Agent is a new round, and a shared conversation's latest turn is nobody's reply (#11553)
+
+A continuation (`task_plan` `continues`) reopened an accepted to-do and refreshed its ledger's criteria, but left
+`state: accepted` with the earlier round's acceptance as the latest review. Every client and the hub's triage read
+"open + accepted + latest review accepted" as an acceptance that stands, a rule made for more work sent to an accepted
+task's Agent (#3156). So the continued to-do showed **Accepted** in Working, went to Just finished whenever its new
+Agent stopped, and `superviseJudged` dropped its stops. Reset the terminal verdict where the new round starts
+(`takeTodoForTask`) and keep the history. Leave the send-after-acceptance path alone, and pin both directions in tests.
+
+A linked scheduled run read its explanation from the latest turn of the conversation it went to. In a source
+conversation shared with other work, two runs due in the same minute both read the second run's answer, and the first
+to-do's no-progress decision quoted another task. Find the run's own prompt by its run key (`runKeyIn`) and take the
+reply after it, up to the next message that opened a turn. Refuse turns that a queued message mixed. Test with real
+transcript pages (`runChat`), not bare item lists.

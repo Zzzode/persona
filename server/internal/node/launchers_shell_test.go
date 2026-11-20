@@ -109,16 +109,18 @@ exit 1
 	}
 	waitFor(t, "launcher scan startup", func() bool { _, err := os.Stat(started); return err == nil })
 	type answer struct {
-		list []proto.Launcher
-		err  error
+		list   []proto.Launcher
+		err    error
+		forced bool
 	}
 	const requests = 5
 	ready, done := make(chan struct{}), make(chan answer, requests)
 	for request := range requests {
 		go func() {
 			ready <- struct{}{}
-			list, err := n.launchers(t.Context(), request%2 == 0)
-			done <- answer{list, err}
+			forced := request%2 == 0
+			list, err := n.launchers(t.Context(), forced)
+			done <- answer{list: list, err: err, forced: forced}
 		}()
 	}
 	for range requests {
@@ -130,12 +132,18 @@ exit 1
 		}
 	}
 	// All callers have reached the call site. Let them join the running scan before allowing it to fail.
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(100 * time.Millisecond) // sleep-ok: singleflight exposes no waiter signal for the gated real shell.
 	writeFile(t, release, "")
 	deadline := time.After(10 * time.Second)
 	for range requests {
 		select {
 		case got := <-done:
+			if got.forced {
+				if got.err == nil || got.list != nil {
+					t.Errorf("forced read after shared scan failure = %v, %v; want the discovery error", got.list, got.err)
+				}
+				continue
+			}
 			if got.err != nil || !slices.Equal(got.list, stale) {
 				t.Errorf("launcher list after scan failure = %v, error = %v, want %v", got.list, got.err, stale)
 			}
