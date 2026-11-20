@@ -118,9 +118,14 @@ func TestSearchFindsTraeCLIByDisplayName(t *testing.T) {
 		}
 		items = append(items, item)
 	}
+	custom := proto.Session{MachineID: "computer", SessionID: "custom", Agent: "traex", AgentLabel: "Team relay", State: "idle"}
+	items = append(items, sessionlist.Item{ID: custom.SessionID, Machine: custom.MachineID, State: custom.State, Full: custom, Summary: custom})
 	var index sessionlist.Index
 	index.Replace("fixture", items)
-	for query, want := range map[string]int{"TRAE CLI": 3, "traecli": 3, "harness:traecli": 3, "harness:traex": 1} {
+	for query, want := range map[string]int{
+		"TRAE CLI": 4, "traecli": 4, "harness:traecli": 4, "harness:traex": 2,
+		"Team relay": 1, "harness:relay": 1,
+	} {
 		page, err := index.Query(sessionlist.Options{Search: query, SearchContext: &sessionlist.SearchContext{Document: Document}, Limit: 10})
 		if err != nil {
 			t.Fatal(err)

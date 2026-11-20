@@ -128,6 +128,12 @@ func Document(item sessionlist.Item) (sessionlist.SearchDocument, error) {
 	case "traex", "traecli", "trae-cli":
 		harnessCommand = "traecli"
 		d.Harness += " " + harnessCommand
+		label := first(row.AgentLabel, row.AgentName)
+		switch strings.ToLower(label) {
+		case "", "traex", "traecli", "trae-cli", "trae cli":
+		default:
+			d.HarnessLabel = label
+		}
 	}
 	model := row.Model
 	if strings.TrimSpace(model) == "" {
