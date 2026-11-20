@@ -172,10 +172,13 @@ func TestLaunchersQueuedRefreshUsesDiscoveryCompletedWhileWaiting(t *testing.T) 
 		launcherCache.Unlock()
 	})
 
-	n := &Node{}
+	n, _ := testNode(t)
 	if _, err := n.launchers(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	launcherCache.Lock()
+	launcherCache.at = time.Now().Add(-2 * time.Minute)
+	launcherCache.Unlock()
 	started, release := filepath.Join(home, "discovery-started"), filepath.Join(home, "discovery-release")
 	gated := "alias custom-b='claude'\nprint -r -- started > \"$HOME/discovery-started\"\n" +
 		"while [[ ! -f \"$HOME/discovery-release\" ]]; do sleep 0.02; done\n"
@@ -202,6 +205,33 @@ func TestLaunchersQueuedRefreshUsesDiscoveryCompletedWhileWaiting(t *testing.T) 
 		}
 		return false
 	})
+	// A cache-only request must avoid desktop executable discovery as well as launcher discovery.
+	desktop, _ := useDesktopDirs(t)
+	if err := os.MkdirAll(filepath.Join(desktop, "claude-code-sessions"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	hideMachineAgents(t)
+	t.Setenv("PERSONA_NODEJS", "")
+	snapshotDone := make(chan answer, 1)
+	go func() {
+		raw, err := nodeCall(t, n, "launchers.list", map[string]any{"cache_only": true})
+		var listed struct {
+			Launchers []proto.Launcher `json:"launchers"`
+		}
+		if err == nil {
+			err = json.Unmarshal(raw, &listed)
+		}
+		snapshotDone <- answer{list: listed.Launchers, err: err}
+	}()
+	select {
+	case got := <-snapshotDone:
+		names := byName(got.list)
+		if got.err != nil || names["custom-a"].Name != "custom-a" || names[claudeDesktopLauncher].Name != "" {
+			t.Errorf("snapshot during refresh = %v, %v; want the previous shell launchers", got.list, got.err)
+		}
+	case <-time.After(time.Second):
+		t.Error("snapshot waited for the unfinished discovery")
+	}
 	cancel() // The RPC caller may give up; node discovery deliberately finishes and publishes its result.
 	if err := os.WriteFile(rc, []byte("alias custom-c='claude'\n"), 0o600); err != nil {
 		t.Fatal(err)
@@ -397,21 +427,23 @@ func TestLaunchersListShellDiscoveryErrorWithRuntimeOnlyWhenForced(t *testing.T)
 		launcherCache.codex, launcherCache.settings, launcherCache.scripts = codex, settings, scripts
 		launcherCache.Unlock()
 	})
-	if _, err := nodeCall(t, n, "launchers.list", map[string]any{"refresh": true}); err == nil {
-		t.Fatal("a runtime overlay hid the forced shell discovery error")
-	}
-	raw, err := nodeCall(t, n, "launchers.list", map[string]any{})
-	if err != nil {
-		t.Fatalf("an ordinary picker lost its independently usable runtime: %v", err)
-	}
-	var listed struct {
-		Launchers []proto.Launcher `json:"launchers"`
-	}
-	if err := json.Unmarshal(raw, &listed); err != nil {
-		t.Fatal(err)
-	}
-	if !slices.ContainsFunc(listed.Launchers, func(l proto.Launcher) bool { return l.Name == "dsh" }) {
-		t.Fatalf("ordinary picker lost the runtime after shell discovery failed: %s", raw)
+	for _, cacheOnly := range []bool{false, true} {
+		if _, err := nodeCall(t, n, "launchers.list", map[string]any{"refresh": true, "cache_only": cacheOnly}); err == nil {
+			t.Fatalf("cache_only=%v: forced shell discovery should report its failure", cacheOnly)
+		}
+		raw, err := nodeCall(t, n, "launchers.list", map[string]any{"cache_only": cacheOnly})
+		if err != nil {
+			t.Fatalf("cache_only=%v: picker lost its independently usable runtime: %v", cacheOnly, err)
+		}
+		var listed struct {
+			Launchers []proto.Launcher `json:"launchers"`
+		}
+		if err := json.Unmarshal(raw, &listed); err != nil {
+			t.Fatal(err)
+		}
+		if _, ok := byName(listed.Launchers)["dsh"]; !ok {
+			t.Fatalf("cache_only=%v: picker lost the runtime after shell discovery failed: %s", cacheOnly, raw)
+		}
 	}
 }
 

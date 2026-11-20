@@ -40,18 +40,24 @@ func (s *Service) listLaunchers(ctx context.Context, d Device, refresh ...bool) 
 		err := s.call(ctx, d.ID, DeviceLaunchersList, params, &res)
 		return res, err
 	}
+	var res launcherListing
+	var err error
 	if len(refresh) > 0 && refresh[0] {
-		// Retry starts a real scan. Reserve part of the same budget for an ordinary read of the node's usable entries
-		// if the scan is slow or fails. Execution recovery uses machineLaunchersOn and requires a successful scan.
+		// Retry starts a real scan. Reserve part of the same budget for the last node snapshot if the scan is slow
+		// or fails. Execution recovery uses machineLaunchersOn and requires a successful scan.
 		reserve := min(time.Second, launcherSyncTimeout/2)
 		rctx, stop := context.WithTimeout(cctx, launcherSyncTimeout-reserve)
-		res, err := read(rctx, map[string]any{"refresh": true})
+		res, err = read(rctx, map[string]any{"refresh": true})
 		stop()
-		if err == nil || cctx.Err() != nil {
-			return res, err
+		if err != nil && cctx.Err() == nil {
+			cached, cacheErr := read(cctx, map[string]any{"cache_only": true})
+			if cacheErr == nil && len(cached.Launchers) > 0 {
+				return cached, nil
+			}
 		}
+	} else {
+		res, err = read(cctx, map[string]any{})
 	}
-	res, err := read(cctx, map[string]any{})
 	if err != nil && cctx.Err() != nil && ctx.Err() == nil {
 		err = context.DeadlineExceeded
 	}

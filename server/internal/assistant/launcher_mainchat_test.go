@@ -98,7 +98,10 @@ type failingLauncherRefreshHub struct {
 
 func (h failingLauncherRefreshHub) DeviceCall(ctx context.Context, p DeviceCall) (json.RawMessage, error) {
 	if p.Method == DeviceLaunchersList {
-		var params struct{ Refresh bool }
+		var params struct {
+			Refresh   bool
+			CacheOnly bool `json:"cache_only"`
+		}
 		if err := json.Unmarshal(p.Params, &params); err != nil {
 			return nil, err
 		}
@@ -106,6 +109,9 @@ func (h failingLauncherRefreshHub) DeviceCall(ctx context.Context, p DeviceCall)
 			if h.err != nil {
 				return nil, h.err
 			}
+		}
+		// The original scan is still running. Only a cache-only read can bypass it.
+		if !params.CacheOnly {
 			<-ctx.Done()
 			return nil, ctx.Err()
 		}
@@ -113,26 +119,38 @@ func (h failingLauncherRefreshHub) DeviceCall(ctx context.Context, p DeviceCall)
 	return h.Hub.DeviceCall(ctx, p)
 }
 
-func TestMainChatPickerRetryUsesCompletedScan(t *testing.T) {
+func TestMainChatPickerRetryUsesNodeSnapshot(t *testing.T) {
 	old := launcherSyncTimeout
 	launcherSyncTimeout = 200 * time.Millisecond
 	t.Cleanup(func() { launcherSyncTimeout = old })
 	for _, tc := range []struct {
-		name string
-		err  error
+		name    string
+		err     error
+		hasRows bool
 	}{
-		{name: "slow refresh"},
-		{name: "failed refresh", err: errors.New("incomplete shell output")},
+		{name: "slow refresh with stale snapshot", hasRows: true},
+		{name: "failed refresh with stale snapshot", err: errors.New("incomplete shell output"), hasRows: true},
+		{name: "slow refresh without snapshot"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			f := newFakeHub().withMachine()
-			f.launcherList = []proto.Launcher{{Name: "recovered", Source: "zshrc"}}
+			f.launcherList = []proto.Launcher{}
+			if tc.hasRows {
+				f.launcherList = []proto.Launcher{{Name: "recovered", Source: "zshrc"}}
+			}
 			st := &memStore{}
 			s := withSettings(t, f, New(Options{
 				Hub: failingLauncherRefreshHub{Hub: f, err: tc.err}, Store: func() Store { return st }, Logf: testLogf(t),
 			}))
-			if got := pickerNames(t, s, "assistant&refresh=1"); !slices.Equal(got, []string{"recovered"}) {
-				t.Fatalf("picker = %v, want the completed node scan", got)
+			if tc.hasRows {
+				if got := pickerNames(t, s, "assistant&refresh=1"); !slices.Equal(got, []string{"recovered"}) {
+					t.Fatalf("picker = %v, want the cached node scan", got)
+				}
+			} else {
+				r := request(s, "GET", "/api/v1/machines/server/launchers?purpose=assistant&refresh=1", "")
+				if r.Code != 502 || !strings.Contains(r.Body.String(), `"code":"timeout"`) {
+					t.Fatalf("empty cache should stay retryable: %d %s", r.Code, r.Body.String())
+				}
 			}
 		})
 	}
