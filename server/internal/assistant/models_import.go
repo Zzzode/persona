@@ -776,7 +776,10 @@ func (s *Service) assistantPickerDefault(ctx context.Context, picker []Configure
 		return nil
 	}
 	name, launcher := strings.CutPrefix(b.Provider, "launcher.")
-	if b.Model == "" && launcher {
+	if !launcher || name == "" {
+		return nil // the main chat can start only a launcher, even if an older record holds a direct API ID
+	}
+	if b.Model == "" {
 		if m, ok := s.managedNamed(ctx, name); ok {
 			b.Model = m.Model
 		} else if i := slices.IndexFunc(picker, func(l ConfiguredLauncher) bool {

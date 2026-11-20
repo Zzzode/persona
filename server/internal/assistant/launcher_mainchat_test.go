@@ -177,6 +177,35 @@ func TestMainChatPickerDefaultUsesFreshAlias(t *testing.T) {
 	}
 }
 
+func TestMainChatPickerDefaultRequiresLauncherBinding(t *testing.T) {
+	s, _ := mainChatFixture(t)
+	putLaunchers(t, s, storedLauncher{ManagedLauncher: proto.ManagedLauncher{
+		Name: "messages", Kind: "api", API: "messages", Model: "configured-model",
+	}})
+	ctx := t.Context()
+	read := func() map[string]string {
+		t.Helper()
+		r := request(s, "GET", "/api/v1/machines/server/launchers?purpose=assistant", "")
+		var out struct{ Default map[string]string }
+		if r.Code != 200 || json.Unmarshal(r.Body.Bytes(), &out) != nil {
+			t.Fatalf("picker response: %d %s", r.Code, r.Body.String())
+		}
+		return out.Default
+	}
+	if err := s.saveModelRecord(ctx, "assistant", 0, ModelBinding{Provider: "legacy.ai"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(); got != nil {
+		t.Fatalf("API binding without a launcher supplied a picker default: %v", got)
+	}
+	if err := s.saveModelRecord(ctx, "assistant", 1, ModelBinding{Provider: "launcher.messages"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(); got["provider"] != "messages" || got["model"] != "configured-model" {
+		t.Fatalf("Messages provider's launcher default = %v", got)
+	}
+}
+
 func TestMainChatPickerShellTimeoutWithoutChoicesStaysRetryable(t *testing.T) {
 	f := newFakeHub().withMachine()
 	f.slowLaunchers = map[string]bool{"server": true}
