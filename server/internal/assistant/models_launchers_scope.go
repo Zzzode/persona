@@ -236,26 +236,30 @@ func (s *Service) ownServiceCached(machine, agent string) (proto.OwnServiceState
 }
 
 // ownService asks machine's node whether agent's harness has a usable service of its own there (cached; an older node
-// or one that does not answer: unknown).
+// or one that does not answer: unknown). A picker that runs out of time before a full probe keeps the last answer.
 func (s *Service) ownService(ctx context.Context, machine, agent string) proto.OwnServiceState {
-	if st, ok := s.ownServiceCached(machine, agent); ok {
-		return st
+	previous, fresh := s.ownServiceCached(machine, agent)
+	if fresh {
+		return previous
+	}
+	if previous.Agent == "" {
+		previous.Agent = agent
 	}
 	st := proto.OwnServiceState{Agent: agent}
 	wait := ownServiceWait
 	if deadline, ok := ctx.Value(pickerDiscoveryDeadline{}).(time.Time); ok {
 		wait = min(wait, time.Until(deadline))
 		if wait <= 0 {
-			return st
+			return previous
 		}
 	}
 	cctx, cancel := context.WithTimeout(ctx, wait)
 	defer cancel()
 	if err := s.call(cctx, machine, DeviceLaunchersOwnService, map[string]any{"agent": agent}, &st); err != nil {
-		st = proto.OwnServiceState{Agent: agent}
 		if wait < ownServiceWait && cctx.Err() != nil {
-			return st // a picker giving up early must not replace the cached answer
+			return previous // a picker giving up early must not replace or renew the cached answer
 		}
+		st = proto.OwnServiceState{Agent: agent}
 	}
 	m := &s.models
 	m.ownMu.Lock()
