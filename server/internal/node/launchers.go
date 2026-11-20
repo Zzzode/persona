@@ -77,16 +77,15 @@ const (
 	launcherEnd   = "\x01persona-launchers-end\x01"
 )
 
-// launcherOutput is what launcherScript itself printed: rc files print what they like to stdout while the shell
-// starts (Ubuntu's /etc/bash.bashrc a sudo hint, #6310) and an exit trap after the script, none of it the script's.
-// Nothing without the begin marker; to the end of the output without the end marker (a shell cut off by the timeout).
-func launcherOutput(out string) string {
+// launcherOutput returns the script's framed output and whether the frame completed. Ignore rc startup text and
+// exit traps outside the markers (#6310). An interrupted script can leave a body without its end marker.
+func launcherOutput(out string) (string, bool) {
 	i := strings.LastIndex(out, launcherBegin)
 	if i < 0 {
-		return ""
+		return "", false
 	}
-	out, _, _ = strings.Cut(out[i+len(launcherBegin):], launcherEnd)
-	return out
+	body, _, complete := strings.Cut(out[i+len(launcherBegin):], launcherEnd)
+	return body, complete
 }
 
 // launchers lists the launchers of this machine's login shell: the `_claude_launchers` helper's (claude wrapper
@@ -132,9 +131,11 @@ func freshLauncherList() []proto.Launcher {
 
 func scanLaunchers(ctx context.Context) ([]byte, error) {
 	out, err := launcherShellOutput(ctx, launcherScript)
-	// Retain useful partial output. The shell can print an rc banner or the start of the frame before the timeout.
-	if err != nil && strings.Trim(launcherOutput(string(out)), "\x02\x1d\r\n\t ") == "" {
-		return nil, fmt.Errorf("list launchers: %w", err)
+	if err != nil {
+		// A background child can hold stdout open after a complete scan. A partial frame can be just a banner.
+		if _, complete := launcherOutput(string(out)); !complete {
+			return nil, fmt.Errorf("list launchers: %w", err)
+		}
 	}
 	return out, nil
 }
@@ -154,7 +155,8 @@ func launcherShellOutput(ctx context.Context, script string) ([]byte, error) {
 // name (launcher_settings.go); an alias is what the shell runs for its name even when the helper lists the name too.
 // scripts: where each wrapper script is.
 func mergeLaunchers(out string) (list []proto.Launcher, codex map[string][]string, settings, scripts map[string]string) {
-	helper, rest, _ := strings.Cut(launcherOutput(out), "\x1d")
+	body, _ := launcherOutput(out)
+	helper, rest, _ := strings.Cut(body, "\x1d")
 	aliases, rest, _ := strings.Cut(rest, "\x1d")
 	if a, ok := strings.CutPrefix(aliases, bashAliasMark); ok {
 		aliases = bashAliases(a)

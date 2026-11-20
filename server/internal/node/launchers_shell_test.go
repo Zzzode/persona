@@ -22,7 +22,7 @@ func asBash(t *testing.T, defs, script string) string {
 	return asBashIn(t, t.TempDir(), defs, script)
 }
 
-func TestLauncherScanTimeoutDiscardsEmptyFramesAndBoundsChildOutput(t *testing.T) {
+func TestLauncherScanTimeoutDiscardsIncompleteFramesAndBoundsChildOutput(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses Unix shell process groups")
 	}
@@ -35,8 +35,9 @@ func TestLauncherScanTimeoutDiscardsEmptyFramesAndBoundsChildOutput(t *testing.T
 	t.Setenv("SHELL", "/bin/zsh")
 	const hang = "exec /bin/sh -c '/bin/sleep 8 & wait'"
 	for name, rc := range map[string]string{
-		"startup": "echo 'Welcome back'\n" + hang,
-		"no rows": "_claude_launchers() { " + hang + "; }",
+		"startup":       "echo 'Welcome back'\n" + hang,
+		"no rows":       "_claude_launchers() { " + hang + "; }",
+		"helper banner": "_claude_launchers() { echo 'Starting discovery'; " + hang + "; }",
 	} {
 		t.Run(name, func(t *testing.T) {
 			writeFile(t, filepath.Join(home, ".zshrc"), rc+"\n")
