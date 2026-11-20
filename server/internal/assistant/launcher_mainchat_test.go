@@ -90,6 +90,38 @@ func TestMainChatPickerForwardsAnExplicitRefresh(t *testing.T) {
 	}
 }
 
+type slowLauncherRefreshHub struct{ Hub }
+
+func (h slowLauncherRefreshHub) DeviceCall(ctx context.Context, p DeviceCall) (json.RawMessage, error) {
+	if p.Method == DeviceLaunchersList {
+		var params struct{ Refresh bool }
+		if err := json.Unmarshal(p.Params, &params); err != nil {
+			return nil, err
+		}
+		if params.Refresh {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		}
+	}
+	return h.Hub.DeviceCall(ctx, p)
+}
+
+func TestMainChatPickerRetryUsesCompletedScanWhenRefreshIsSlow(t *testing.T) {
+	f := newFakeHub().withMachine()
+	f.launcherList = []proto.Launcher{{Name: "recovered", Source: "zshrc"}}
+	st := &memStore{}
+	s := withSettings(t, f, New(Options{
+		Hub: slowLauncherRefreshHub{Hub: f}, Store: func() Store { return st }, Logf: testLogf(t),
+	}))
+	old := launcherSyncTimeout
+	launcherSyncTimeout = 200 * time.Millisecond
+	t.Cleanup(func() { launcherSyncTimeout = old })
+
+	if got := pickerNames(t, s, "assistant&refresh=1"); !slices.Equal(got, []string{"recovered"}) {
+		t.Fatalf("picker after slow refresh = %v, want the completed node scan", got)
+	}
+}
+
 func TestMainChatPickerUsesKnownProvidersDuringShellTimeout(t *testing.T) {
 	s, f := mainChatFixture(t)
 	putLaunchers(t, s, storedLauncher{ManagedLauncher: proto.ManagedLauncher{Name: "gw", Model: "m1", OwnService: "skip"}})
@@ -243,9 +275,11 @@ func TestMainChatPickerShellTimeoutWithoutChoicesStaysRetryable(t *testing.T) {
 	launcherSyncTimeout = 50 * time.Millisecond
 	t.Cleanup(func() { launcherSyncTimeout = old })
 
-	r := request(s, "GET", "/api/v1/machines/server/launchers?purpose=assistant", "")
-	if r.Code != 502 || !strings.Contains(r.Body.String(), `"code":"timeout"`) {
-		t.Fatalf("picker without choices = %d %s", r.Code, r.Body.String())
+	for _, refresh := range []string{"", "&refresh=1"} {
+		r := request(s, "GET", "/api/v1/machines/server/launchers?purpose=assistant"+refresh, "")
+		if r.Code != 502 || !strings.Contains(r.Body.String(), `"code":"timeout"`) {
+			t.Fatalf("picker without choices (%q) = %d %s", refresh, r.Code, r.Body.String())
+		}
 	}
 }
 

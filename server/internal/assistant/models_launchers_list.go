@@ -27,20 +27,31 @@ type launcherListing struct {
 	RCFile      string           `json:"rc_file"`
 }
 
-// listLaunchers asks one machine for its list, giving it launcherSyncTimeout; an offline machine is not asked.
+// listLaunchers asks one online machine for its list, giving it launcherSyncTimeout in total.
 // Ordinary lists never load external sources; those use their own handshake-gated, source-scoped RPC.
 func (s *Service) listLaunchers(ctx context.Context, d Device, refresh ...bool) (launcherListing, error) {
-	var res launcherListing
 	if !d.Online {
-		return res, apierr.ErrOffline
+		return launcherListing{}, apierr.ErrOffline
 	}
 	cctx, cancel := context.WithTimeout(ctx, launcherSyncTimeout)
 	defer cancel()
-	params := map[string]any{}
-	if len(refresh) > 0 && refresh[0] {
-		params["refresh"] = true
+	read := func(ctx context.Context, params map[string]any) (launcherListing, error) {
+		var res launcherListing
+		err := s.call(ctx, d.ID, DeviceLaunchersList, params, &res)
+		return res, err
 	}
-	err := s.call(cctx, d.ID, DeviceLaunchersList, params, &res)
+	if len(refresh) > 0 && refresh[0] {
+		// Retry starts a real scan. Reserve part of the same budget to read a completed node snapshot if the scan is slow.
+		reserve := min(time.Second, launcherSyncTimeout/2)
+		rctx, stop := context.WithTimeout(cctx, launcherSyncTimeout-reserve)
+		res, err := read(rctx, map[string]any{"refresh": true})
+		timedOut := errors.Is(rctx.Err(), context.DeadlineExceeded) || apierr.NodeCode(err) == "timeout"
+		stop()
+		if err == nil || !timedOut {
+			return res, err
+		}
+	}
+	res, err := read(cctx, map[string]any{})
 	if err != nil && cctx.Err() != nil && ctx.Err() == nil {
 		err = context.DeadlineExceeded
 	}

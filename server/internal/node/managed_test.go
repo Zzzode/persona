@@ -54,11 +54,11 @@ func TestClaudeExecutableFallsBackToInstallLocations(t *testing.T) {
 	}
 }
 
-// hideMachineAgents points the fixed system directories agentExecutable and commonNodePaths look in at empty temporary
-// ones, as a test does PATH and HOME: then it finds only the claude and node it sets up, not the machine's own (#5449,
-// #6257).
+// hideMachineAgents isolates the system and configured NVM directories that agentExecutable and commonNodePaths
+// search. With a temporary PATH and HOME, the test finds only the agents it sets up (#5449, #6257).
 func hideMachineAgents(t *testing.T) {
 	t.Helper()
+	t.Setenv("NVM_DIR", "")
 	systemDirs, distroDir := agentSystemDirs, distroNodeDir
 	agentSystemDirs, distroNodeDir = []string{t.TempDir()}, t.TempDir()
 	t.Cleanup(func() { agentSystemDirs, distroNodeDir = systemDirs, distroDir })
@@ -68,7 +68,6 @@ func TestClaudeExecutableFallsBackToNVMAndActionableError(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	t.Setenv("PATH", t.TempDir())
-	t.Setenv("NVM_DIR", "")
 	// Not the machine's own claude, or "missing" would find it (#5449, #6257).
 	hideMachineAgents(t)
 
