@@ -90,6 +90,9 @@ func launcherOutput(out string) (string, bool) {
 	return body, complete
 }
 
+// launcherFetchObserverKey carries a test-only signal after a request joins the shared scan.
+type launcherFetchObserverKey struct{}
+
 // launchers lists the launchers of this machine's login shell: the `_claude_launchers` helper's (claude wrapper
 // functions), then every alias that runs claude (`alias dmcc="ANTHROPIC_BASE_URL=… claude …"`), by name. A name
 // the helper lists is not repeated; none at all: plain claude. A forced refresh requires a discovery newer than the
@@ -137,12 +140,18 @@ func (n *Node) launchers(ctx context.Context, refresh ...bool) ([]proto.Launcher
 		launcherCache.Unlock()
 		return current, nil
 	}
+	entered, _ := ctx.Value(launcherFetchObserverKey{}).(func())
 	for {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		result, err, _ := launcherCache.fetch.Do("shell", read)
-		if err != nil {
+		result := launcherCache.fetch.DoChan("shell", read)
+		if entered != nil {
+			entered()
+			entered = nil
+		}
+		shared := <-result
+		if err := shared.Err; err != nil {
 			if canceled := ctx.Err(); canceled != nil {
 				return nil, canceled
 			}
@@ -155,7 +164,7 @@ func (n *Node) launchers(ctx context.Context, refresh ...bool) ([]proto.Launcher
 			}
 			return lastLaunchers(err)
 		}
-		got := result.(discovery)
+		got := shared.Val.(discovery)
 		// An ordinary cache hit shared through the group cannot satisfy a forced request for newer data.
 		if !forced || got.generation != observed {
 			return got.list, nil

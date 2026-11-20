@@ -114,25 +114,28 @@ exit 1
 		forced bool
 	}
 	const requests = 5
-	ready, done := make(chan struct{}), make(chan answer, requests)
+	ready, done := make(chan struct{}, requests), make(chan answer, requests)
 	for request := range requests {
 		go func() {
-			ready <- struct{}{}
+			ctx := context.WithValue(t.Context(), launcherFetchObserverKey{}, func() { ready <- struct{}{} })
 			forced := request%2 == 0
-			list, err := n.launchers(t.Context(), forced)
+			list, err := n.launchers(ctx, forced)
 			done <- answer{list: list, err: err, forced: forced}
 		}()
 	}
+	queued := time.After(5 * time.Second)
 	for range requests {
-		<-ready
+		select {
+		case <-ready:
+		case <-queued:
+			t.Fatal("launcher requests did not join the running scan")
+		}
 	}
 	for range requests {
 		if got := readCached(); !slices.Equal(got, stale) {
 			t.Fatalf("cached launcher list during refresh = %v, want %v", got, stale)
 		}
 	}
-	// All callers have reached the call site. Let them join the running scan before allowing it to fail.
-	time.Sleep(100 * time.Millisecond) // sleep-ok: singleflight exposes no waiter signal for the gated real shell.
 	writeFile(t, release, "")
 	deadline := time.After(10 * time.Second)
 	for range requests {
