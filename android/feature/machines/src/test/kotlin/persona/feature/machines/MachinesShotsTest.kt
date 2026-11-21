@@ -173,7 +173,12 @@ class MachinesShotsTest {
             val bitmap = rule.onNodeWithTag("shot").captureToImage().asAndroidBitmap()
             val name = "machines-${if (d) "detail" else "list"}-$language-${s.name.lowercase()}-${if (dk) "dark" else "light"}.png"
             File(out(), name).outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-            rule.onNodeWithText(if (d) detail else listTitle).assertExists()
+            when {
+                d -> rule.onNodeWithText(detail).assertExists()
+                // Brief uses the machine summary as the list heading instead of the title.
+                s == AppStyle.Brief -> rule.onNodeWithText("1 of 2 online", substring = true).assertExists()
+                else -> rule.onNodeWithText(listTitle).assertExists()
+            }
             rule.onAllNodesWithText(load, useUnmergedTree = true).assertCountEquals(if (d) 2 else 1)
             rule.onNodeWithText(rule.activity.getString(R.string.machines_load_definition)).assertExists()
             if (d) {
