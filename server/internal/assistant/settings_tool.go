@@ -28,6 +28,8 @@ type ownSetting struct {
 	Setting
 	get func(ctx context.Context) (string, error)
 	set func(ctx context.Context, v json.RawMessage) (*ownChange, error)
+	// cardTitle localizes a dynamic setting's title (direction.<id>.prompt); static keys use settingTitles instead.
+	cardTitle func(l i18n.Lang) string
 	// change is a setting's other actions (a list's add and remove: tasks.trust), in place of set.
 	change func(ctx context.Context, action string, v json.RawMessage) (*ownChange, error)
 }
@@ -353,7 +355,10 @@ func (s *Service) toolPersonaSettings(ctx context.Context, call ToolCall, args j
 	if a.Key == standingAuthorizationsKey && a.Action == "set" && (call.SessionID == "" || call.SessionID != s.settings(ctx).Main || call.MachineID != s.settings(ctx).MachineID) {
 		return proto.TextResult("only the main conversation may change standing authorizations", true)
 	}
-	own := s.ownSettings()
+	if _, ok := directionPromptSettingID(a.Key); ok && a.Action == "set" && (call.SessionID == "" || call.SessionID != s.settings(ctx).Main) {
+		return proto.TextResult("only the main conversation may change direction prompts", true)
+	}
+	own := append(s.ownSettings(), s.directionOwnSettings(ctx)...)
 	if a.Action == "" || a.Action == "list" {
 		text, err := s.listSettings(ctx, own)
 		if err != nil {
@@ -369,6 +374,9 @@ func (s *Service) toolPersonaSettings(ctx context.Context, call ToolCall, args j
 			}
 			return proto.TextResult(text, false)
 		}
+	}
+	if _, ok := directionPromptSettingID(a.Key); ok {
+		return proto.TextResult(errNoDirection.Error(), true)
 	}
 	return s.appTool(ctx, AppSettings, call, args) // the hub's
 }
@@ -425,7 +433,9 @@ func (s *Service) ownSettingAction(ctx context.Context, call ToolCall, o ownSett
 	}
 	l := s.lang(ctx)
 	title := o.Title
-	if k, ok := settingTitles[o.Key]; ok {
+	if o.cardTitle != nil {
+		title = o.cardTitle(l)
+	} else if k, ok := settingTitles[o.Key]; ok {
 		title = i18n.T(l, "assistant-settings_tool."+k)
 	}
 	shown, _ := json.Marshal(map[string]string{"setting": title, "action": action})
@@ -825,14 +835,47 @@ func (s *Service) setDeliveryGate(ctx context.Context, v json.RawMessage) (*ownC
 }
 
 func (s *Service) setDoneNeedsDelivery(ctx context.Context, v json.RawMessage) (*ownChange, error) {
-	ch, err := s.setBoolSetting(ctx, v, s.doneNeedsDelivery, "「上线并实测才算做完」没有变化", func(l i18n.Lang, before, after string) string {
-		return i18n.T(l, "assistant-settings_tool.change_done_needs_delivery", i18n.Args{"before": before, "after": after})
-	}, func(v *Settings) **bool {
-		v.DeliveryGate = nil
-		return &v.DoneNeedsDelivery
+	var onPtr *bool
+	if err := json.Unmarshal(v, &onPtr); err != nil || onPtr == nil {
+		return nil, errors.New("value must be true or false")
+	}
+	on := *onPtr
+	target := deliveryGateOff
+	if on {
+		target = deliveryGateLive
+	}
+	beforeGate := s.deliveryGate(ctx)
+	if beforeGate == target {
+		return &ownChange{summary: "「上线并实测才算做完」没有变化"}, nil
+	}
+	if s.store() == nil {
+		return nil, errors.New("no database on this hub")
+	}
+	word := map[bool]string{true: "assistant-settings_tool.on", false: "assistant-settings_tool.off"}
+	beforeBool := beforeGate == deliveryGateLive
+	return &ownChange{cardText: func(l i18n.Lang) string {
+		if beforeGate == deliveryGateMerged && !on {
+			return i18n.T(l, "assistant-settings_tool.change_delivery_gate", i18n.Args{
+				"before": i18n.T(l, "assistant-settings_tool.delivery_gate_"+beforeGate),
+				"after":  i18n.T(l, "assistant-settings_tool.delivery_gate_"+target),
+			})
+		}
+		return i18n.T(l, "assistant-settings_tool.change_done_needs_delivery", i18n.Args{
+			"before": i18n.T(l, word[beforeBool]),
+			"after":  i18n.T(l, word[on]),
+		})
 	},
-		"assistant.done_needs_delivery is %v from the next judgment and task on.")
-	return ch, err
+		apply: func(ctx context.Context) (string, error) {
+			if _, err := s.updateSettings(ctx, func(v *Settings) error {
+				v.DoneNeedsDelivery = &on
+				v.DeliveryGate = nil
+				return nil
+			}); err != nil {
+				return "", err
+			}
+			s.settingsChanged(ctx)
+			return fmt.Sprintf("assistant.done_needs_delivery is %v from the next judgment and task on.", on), nil
+		}}, nil
 }
 
 func (s *Service) setReviewSamplePercent(ctx context.Context, v json.RawMessage) (*ownChange, error) {
