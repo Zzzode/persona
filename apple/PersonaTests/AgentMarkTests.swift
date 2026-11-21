@@ -63,15 +63,26 @@ struct AgentMarkTests {
         }
     }
 
-    @MainActor @Test func shareCardsKeepTheBuiltInTerminalMarkWhenTheNameChanges() {
+    @MainActor @Test func sharesAndExportsKeepLegacyMarksWhenTheNameChanges() async throws {
         let menu = MessageMenu()
-        menu.session = { Self.session(#","agent":"traex""#) }
-        let legacy = menu.shareMessage(text: "Example", isUser: false, date: nil)
-        #expect(legacy.agent == "TRAE CLI" && legacy.showsTerminalMark)
+        for (fields, name, letter, terminal) in [
+            (#","agent":"traex""#, "TRAE CLI", true, true),
+            (#","agent":"paseo","launcher":"traex","agent_label":"TRAEX""#, "TRAE CLI", true, false),
+            (#","agent":"traecli""#, "TRAE CLI", false, false),
+            (#","agent":"trae","agent_label":"TRAE""#, "TRAE", false, false),
+        ] {
+            let session = Self.session(fields)
+            menu.session = { session }
+            let share = menu.shareMessage(text: "Example", isUser: false, date: nil)
+            #expect(share.agent == name && share.prefersLetterMark == letter && share.showsTerminalMark == terminal)
 
-        menu.session = { Self.session(#","agent":"traecli""#) }
-        let cli = menu.shareMessage(text: "Example", isUser: false, date: nil)
-        #expect(cli.agent == "TRAE CLI" && !cli.showsTerminalMark)
+            let source = ForwardMessage.Source(key: session.key, item: "m", role: .agent, author: session.agentLabel,
+                                               chat: "Example", project: nil, machine: nil, time: nil)
+            let exported = try await ChatExportRenderer.messages([.init(source: source, raw: "Example", full: nil)],
+                                                                 prefersLetterMark: AgentKind.prefersLetterMark(for: session))
+            let message = try #require(exported.first)
+            #expect(message.author == name && message.prefersLetterMark == letter)
+        }
     }
 
     /// A Paseo provider that is neither Claude Code nor Codex (`agent` "paseo", #8144): named by its label, else its
