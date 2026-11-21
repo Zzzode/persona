@@ -48,7 +48,19 @@ struct AgentMarkTests {
         }
         #expect(Launcher(name: "traex", displayName: "My CLI", agent: "traex").title == "My CLI")
         #expect(Launcher(name: "team-cli", agent: "traex").title == "team-cli")
-        #expect(Launcher(name: "traex", agent: "paseo", source: "paseo").title == "traex")
+    }
+
+    @Test func namesPaseoLaunchersByProductOrCustomTitle() {
+        for id in ["traex", "traecli", "trae-cli"] {
+            for displayName in [nil, "TRAEX", "TraeCLI", "My CLI"] as [String?] {
+                let title = displayName == "My CLI" ? "My CLI" : "TRAE CLI"
+                let launcher = Launcher(name: id, displayName: displayName, agent: "paseo", source: "paseo")
+                #expect(launcher.title == title)
+                #expect(LauncherChoices.shown([launcher], query: title) == [launcher])
+                let stored = LauncherView(name: id, source: "paseo", displayName: displayName, agent: "paseo")
+                #expect(stored.title == title)
+            }
+        }
     }
 
     @MainActor @Test func shareCardsKeepTheBuiltInTerminalMarkWhenTheNameChanges() {
@@ -71,17 +83,26 @@ struct AgentMarkTests {
         let engine = AgentKind(Self.session(#","agent":"paseo","agent_label":"Paseo","launcher":"grok""#))
         #expect(engine.brand == Theme.Brand.grok && engine.name == "grok")
         #expect(AgentKind(Self.session(#","agent":"paseo","launcher":"kimi""#)).name == "kimi")
-        // TRAE by its label, or by its launcher when the row names only the engine.
-        for label in ["Trae CLI", "TRAEX", "TraeCLI", "Paseo"] {
-            let session = Self.session(",\"agent\":\"paseo\",\"agent_label\":\"\(label)\",\"launcher\":\"traecli\"")
-            let mark = AgentKind(session)
-            #expect(session.agentLabel == "TRAE CLI" && mark.name == "TRAE CLI" && mark.brand == Theme.Brand.trae)
-        }
-        let customTraeCLI = Self.session(#","agent":"paseo","agent_label":"My CLI","launcher":"traecli""#)
-        #expect(customTraeCLI.agentLabel == "My CLI")
+        let trae = AgentKind(Self.session(#","agent":"paseo","launcher":"traecli""#))
+        #expect(trae.brand == Theme.Brand.trae && trae.name == "TRAE CLI")
         // A runtime's reported agent keeps its own mark even when its launcher names a different product.
         let dsh = AgentKind(Self.session(#","agent":"dsh","agent_label":"DSH","launcher":"trae""#))
         #expect(dsh.brand == Theme.Brand.dsh && dsh.name == "DSH")
+    }
+
+    @Test func namesPaseoSessionsByProductOrCustomTitle() {
+        for id in ["traex", "traecli", "trae-cli"] {
+            let base = ",\"agent\":\"paseo\",\"launcher\":\"\(id)\""
+            #expect(Self.session(base).agentLabel == "TRAE CLI")
+            for label in ["Trae CLI", "TRAEX", "TraeCLI", "Paseo", "My CLI"] {
+                let title = label == "My CLI" ? "My CLI" : "TRAE CLI"
+                let session = Self.session(base + ",\"agent_label\":\"\(label)\"")
+                let mark = AgentKind(session)
+                #expect(session.agentLabel == title)
+                #expect(mark.name == title)
+                if id != "traex" { #expect(mark.brand == Theme.Brand.trae) }
+            }
+        }
     }
 
     @Test func knownNamesMapToTheirMarks() {

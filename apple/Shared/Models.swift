@@ -672,7 +672,7 @@ nonisolated struct Launcher: Codable, Identifiable, Hashable, Sendable {
     static func traeCLITitle(name: String, source: String?, agent: String?, baseURL: String?, displayName: String?) -> String? {
         guard name == "traex" || name == "traecli" || name == "trae-cli",
               displayName.map(Session.isTraeCLIName) ?? true else { return nil }
-        if agent == MachineEngine.paseo.rawValue, name != "traex" { return Session.traeCLIName }
+        if agent == MachineEngine.paseo.rawValue { return Session.traeCLIName }
         guard isMachineSource(source), agent == "traex" || agent == "traecli" || agent == "trae-cli" || baseURL == "(traex)"
         else { return nil }
         return Session.traeCLIName
@@ -1520,7 +1520,7 @@ nonisolated struct Session: Codable, Identifiable, Hashable, Sendable {
         let namesOnlyEngine = Self.namesOnlyEngine(agent: agent, label: agentLabelHint)
         if let launcher, !launcher.isEmpty {
             if Self.providerEngines.contains(agent?.lowercased() ?? ""),
-               ["traecli", "trae-cli"].contains(launcher.lowercased()),
+               ["traex", "traecli", "trae-cli"].contains(launcher.lowercased()),
                namesOnlyEngine || (agentLabelHint.map(Self.isTraeCLIName) ?? false) {
                 return Self.traeCLIName
             }
