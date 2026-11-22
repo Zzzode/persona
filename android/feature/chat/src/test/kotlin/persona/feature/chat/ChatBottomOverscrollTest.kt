@@ -1,5 +1,7 @@
 package persona.feature.chat
 
+import androidx.compose.foundation.MutatePriority
+import androidx.compose.foundation.gestures.ScrollScope
 import androidx.compose.foundation.interaction.DragInteraction
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
@@ -8,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Text
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -33,6 +36,7 @@ import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeUp
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,6 +69,7 @@ import persona.core.contracts.api.MessageSender
 import persona.core.contracts.api.OutboxMessage
 import persona.core.contracts.api.SessionsRepository
 import persona.core.designsystem.AppStyle
+import persona.core.designsystem.JumpToLatest
 import persona.core.designsystem.PersonaTheme
 import persona.core.designsystem.Tokens
 import persona.core.domain.sort.SessionRenamer
@@ -448,5 +453,100 @@ class ChatBottomOverscrollTest {
         settle()
         assertTrue("short non-scrollable list stays following", state.followsEnd)
         assertEquals("short non-scrollable list never freezes", 0, freezes)
+    }
+
+    @Test fun dragLeavingBottomWhileNewestRowArrivesFreezesAtTheReadingPosition() =
+        assertFollowingWhenNewestRowArrives(moveDuringDrag = true)
+
+    @Test fun newestRowArrivingDuringDragWithoutDisplacementKeepsFollowing() =
+        assertFollowingWhenNewestRowArrives(moveDuringDrag = false)
+
+    private fun assertFollowingWhenNewestRowArrives(moveDuringDrag: Boolean) {
+        lateinit var state: ChatListState
+        lateinit var scope: CoroutineScope
+        var freezes = 0
+        var rows by mutableStateOf((0 until 30).map { "row-$it" })
+        var drag: ScrollScope? = null
+        var pendingDelta = 0f
+        var consumedDelta = 0f
+        val release = CompletableDeferred<Unit>()
+
+        rule.setContent {
+            PersonaTheme(reduceMotion = true) {
+                state = rememberChatListState()
+                scope = rememberCoroutineScope()
+                val committedRows = rows
+                ChatListEffects(state, rowIds = committedRows, ready = true, onFreeze = { freezes++ },
+                    onFollow = {}, loadOlder = {})
+                Box {
+                    ChatList(state, Modifier.width(360.dp).height(600.dp)) {
+                        items(committedRows.size, key = { committedRows[it] }) { index ->
+                            Text(committedRows[index], Modifier.fillMaxWidth().height(56.dp))
+                        }
+                    }
+                    if (!state.followsEnd) JumpToLatest(count = 0, onClick = state::returnToLatest)
+                }
+                // Deliver the first threshold-crossing delta as the prepend is committed, before the
+                // list's next idle reconciliation. The held user-input scroll excludes auto-follow.
+                SideEffect {
+                    if (committedRows.first() == "newest" && pendingDelta > 0f) {
+                        consumedDelta = checkNotNull(drag).scrollBy(pendingDelta)
+                        pendingDelta = 0f
+                    }
+                }
+            }
+        }
+        settle()
+        val newestBefore = rule.runOnIdle { readingAnchor(state) }
+        assertEquals("row-0" to 0, newestBefore)
+        val interactions = state.list.interactionSource as MutableInteractionSource
+        rule.runOnIdle {
+            scope.launch {
+                val start = DragInteraction.Start()
+                state.list.scroll(MutatePriority.UserInput) {
+                    drag = this
+                    interactions.emit(start)
+                    release.await()
+                    interactions.emit(DragInteraction.Stop(start))
+                }
+            }
+        }
+        settle()
+        val crossingDelta = with(rule.density) { 80.dp.toPx() }
+        rule.runOnIdle {
+            assertTrue("user input is in progress", state.list.isScrollInProgress)
+            assertEquals("starts with no user displacement", newestBefore, readingAnchor(state))
+            if (moveDuringDrag) pendingDelta = crossingDelta
+            rows = listOf("newest") + rows
+        }
+        settle()
+        val anchor = rule.runOnIdle {
+            assertEquals("the newly inserted row has been laid out", rows.size, state.list.layoutInfo.totalItemsCount)
+            assertEquals("the held drag consumed the intended displacement", if (moveDuringDrag) crossingDelta else 0f, consumedDelta, 1f)
+            if (moveDuringDrag) assertTrue("the list moved toward older rows", state.list.canScrollBackward)
+            readingAnchor(state)
+        }
+        rule.runOnIdle { release.complete(Unit) }
+        settle()
+
+        assertEquals(!moveDuringDrag, state.followsEnd)
+        assertEquals(if (moveDuringDrag) 1 else 0, freezes)
+        if (moveDuringDrag) {
+            jumpNode().assertIsDisplayed()
+            assertEquals("releasing the drag preserves its position", anchor, rule.runOnIdle { readingAnchor(state) })
+            rule.runOnIdle { rows = listOf("newer") + rows }
+            settle()
+            assertEquals("later messages preserve the reading position", anchor, rule.runOnIdle { readingAnchor(state) })
+            jumpNode().assertIsDisplayed()
+        } else {
+            jumpNode().assertDoesNotExist()
+            assertEquals("the latest row is followed after the release", "newest" to 0, rule.runOnIdle { readingAnchor(state) })
+        }
+    }
+
+    private fun readingAnchor(state: ChatListState): Pair<Any, Int> {
+        val list = state.list
+        val row = list.layoutInfo.visibleItemsInfo.first { it.index == list.firstVisibleItemIndex }
+        return row.key to list.firstVisibleItemScrollOffset
     }
 }

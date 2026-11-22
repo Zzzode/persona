@@ -19,6 +19,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.currentStateAsState
 import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -28,6 +29,8 @@ import kotlin.math.roundToInt
 private data class ScrollEdgeSnapshot(
     val index: Int,
     val offset: Int,
+    val firstVisibleKey: Any?,
+    val newestKey: String?,
     val canScrollBackward: Boolean,
     val scrolling: Boolean,
 )
@@ -148,53 +151,75 @@ fun ChatListEffects(
     LaunchedEffect(state) {
         val activeDrags = mutableSetOf<DragInteraction.Start>()
         var userScrollPending = false
+        var settleAfterStop: Job? = null
         var handledLatestRequest = state.latestRequest
-        var anchorIndex = state.list.firstVisibleItemIndex
-        var anchorOffset = state.list.firstVisibleItemScrollOffset
-        var anchorFirstKey = latestRows.firstOrNull()
 
-        fun syncAnchor(index: Int, offset: Int, firstKey: String?) {
-            anchorIndex = index
-            anchorOffset = offset
-            anchorFirstKey = firstKey
-        }
-
-        fun reconcileFollow(scrolling: Boolean) {
+        fun scrollEdge(): ScrollEdgeSnapshot {
             val index = state.list.firstVisibleItemIndex
-            val offset = state.list.firstVisibleItemScrollOffset
-            val canScrollBack = state.list.canScrollBackward
-            val firstKey = latestRows.firstOrNull()
+            return ScrollEdgeSnapshot(
+                index = index,
+                offset = state.list.firstVisibleItemScrollOffset,
+                firstVisibleKey = state.list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }?.key,
+                newestKey = latestRows.firstOrNull(),
+                canScrollBackward = state.list.canScrollBackward,
+                scrolling = state.list.isScrollInProgress,
+            )
+        }
+        var anchor = scrollEdge()
+
+        fun reconcileFollow(edge: ScrollEdgeSnapshot = scrollEdge()) {
             val dragging = activeDrags.isNotEmpty()
 
             if (state.latestRequest != handledLatestRequest) {
                 handledLatestRequest = state.latestRequest
                 userScrollPending = false
-                syncAnchor(index, offset, firstKey)
+                anchor = edge
             }
             if (state.programmaticScroll) {
                 if (!dragging) userScrollPending = false
-                syncAnchor(index, offset, firstKey)
+                anchor = edge
                 return
             }
-            if (firstKey != anchorFirstKey) {
-                syncAnchor(index, offset, firstKey)
+
+            val newestChanged = edge.newestKey != anchor.newestKey
+            val leftBottom = hasLeftBottom(edge.index, edge.offset, edge.canScrollBackward, leaveThreshold)
+            val followingGesture = (dragging || userScrollPending) && state.followsEnd
+            val rebasedIndex = if (followingGesture && leftBottom) {
+                // LazyColumn retains the old key when new rows are prepended. Its index can grow with no drag.
+                state.list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == anchor.firstVisibleKey }?.index
+            } else null
+            if (followingGesture && leftBottom) {
+                val movedAway = when {
+                    rebasedIndex != null -> {
+                        val offset = if (anchor.index == 0 && rebasedIndex > 0) maxOf(anchor.offset, leaveThreshold) else anchor.offset
+                        movedAwayFromBottom(edge.index, edge.offset, rebasedIndex, offset)
+                    }
+                    !newestChanged -> movedAwayFromBottom(edge.index, edge.offset, anchor.index, anchor.offset)
+                    else -> {
+                        // A fling can carry the anchor offscreen. Compare the keys' order, since some rendered
+                        // rows are absent from rowIds and its indexes then differ from the layout indexes.
+                        val rows = latestRows
+                        val anchorRank = (anchor.firstVisibleKey as? String)?.let(rows::indexOf) ?: -1
+                        val currentRank = (edge.firstVisibleKey as? String)?.let(rows::indexOf) ?: -1
+                        anchorRank >= 0 && currentRank > anchorRank
+                    }
+                }
+                if (movedAway) {
+                    state.position = state.position.copy(followsEnd = false)
+                    freeze()
+                }
             }
 
-            val leftBottom = hasLeftBottom(index, offset, canScrollBack, leaveThreshold)
-            val movedAway = movedAwayFromBottom(index, offset, anchorIndex, anchorOffset)
-            if ((dragging || userScrollPending) && leftBottom && movedAway && state.followsEnd) {
-                state.position = state.position.copy(followsEnd = false)
-                freeze()
-            }
-
-            if (!dragging && !scrolling) {
-                val settledAtBottom = isAtBottom(index, offset, canScrollBack, returnTolerance)
-                if (atLatest && state.dragged && state.restored && !state.followsEnd && settledAtBottom) {
+            if (!dragging && !edge.scrolling && settleAfterStop == null) {
+                val settledAtBottom = isAtBottom(edge.index, edge.offset, edge.canScrollBackward, returnTolerance)
+                val missedFollow = state.followsEnd && userScrollPending && newestChanged && !settledAtBottom &&
+                    rebasedIndex == edge.index && edge.offset == anchor.offset
+                if (atLatest && state.dragged && state.restored && (missedFollow || (!state.followsEnd && settledAtBottom))) {
                     state.returnToLatest()
                     handledLatestRequest = state.latestRequest
                 }
                 userScrollPending = false
-                syncAnchor(index, offset, firstKey)
+                anchor = edge
             }
         }
 
@@ -208,36 +233,40 @@ fun ChatListEffects(
                         // do not, and they leave the keyboard up (#4210).
                         focusManager.clearFocus()
                         keyboard?.hide()
+                        settleAfterStop?.cancel()
+                        settleAfterStop = null
                         activeDrags += interaction
                         userScrollPending = true
                         if (!state.restored) state.epoch++
                         state.dragged = true
                         state.restored = true
-                        reconcileFollow(scrolling = state.list.isScrollInProgress)
+                        reconcileFollow()
                     }
                     is DragInteraction.Stop -> {
                         activeDrags -= interaction.start
-                        reconcileFollow(scrolling = state.list.isScrollInProgress)
+                        if (activeDrags.isEmpty() && userScrollPending) {
+                            // Compose emits Stop before starting the fling in a separate coroutine.
+                            settleAfterStop?.cancel()
+                            settleAfterStop = launch {
+                                withFrameNanos { }
+                                settleAfterStop = null
+                                reconcileFollow()
+                            }
+                        }
+                        reconcileFollow()
                     }
                     is DragInteraction.Cancel -> {
                         activeDrags -= interaction.start
-                        reconcileFollow(scrolling = state.list.isScrollInProgress)
+                        reconcileFollow()
                     }
                 }
             }
         }
 
         launch {
-            snapshotFlow {
-                ScrollEdgeSnapshot(
-                    index = state.list.firstVisibleItemIndex,
-                    offset = state.list.firstVisibleItemScrollOffset,
-                    canScrollBackward = state.list.canScrollBackward,
-                    scrolling = state.list.isScrollInProgress,
-                )
-            }.distinctUntilChanged().collect { snap ->
+            snapshotFlow { scrollEdge() }.collect { edge ->
                 state.capture()
-                reconcileFollow(scrolling = snap.scrolling)
+                reconcileFollow(edge)
             }
         }
     }
