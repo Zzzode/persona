@@ -31,7 +31,11 @@ import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import persona.core.designsystem.AppStyle
+import persona.core.designsystem.HomeNavigation
+import persona.core.designsystem.JIconButton
+import persona.core.designsystem.NavItem
 import persona.core.designsystem.PersonaTheme
+import persona.core.designsystem.icons.PhIcons
 import java.io.File
 
 @RunWith(AndroidJUnit4::class)
@@ -40,7 +44,7 @@ import java.io.File
 class AgentChatJumpToLatestTest {
     @get:Rule val rule = createComposeRule()
 
-    @Test fun arrowRestsOnThePageWithoutAContainerInEveryStyle() {
+    @Test fun arrowUsesACircleInEveryStyleAndMatchesTheGlassHomeAction() {
         var style by mutableStateOf(AppStyle.Glass)
         var dark by mutableStateOf(false)
         var background = Color.Unspecified
@@ -48,8 +52,13 @@ class AgentChatJumpToLatestTest {
             PersonaTheme(darkTheme = dark, reduceMotion = true, style = style) {
                 val pageColor = PersonaTheme.palette.background
                 SideEffect { background = pageColor }
-                Box(Modifier.fillMaxSize().background(pageColor), contentAlignment = Alignment.Center) {
-                    AgentChatJumpToLatest(count = 0, onClick = {})
+                Box(Modifier.fillMaxSize().background(pageColor)) {
+                    HomeNavigation(
+                        items = listOf(NavItem("agents", "Agents", PhIcons.Robot)),
+                        selected = "agents", onSelect = {}, leading = {},
+                        trailing = { JIconButton(PhIcons.ArrowDown, "Reference home action", {}, raised = true) },
+                    )
+                    Box(Modifier.align(Alignment.Center)) { AgentChatJumpToLatest(count = 0, onClick = {}) }
                 }
             }
         }
@@ -64,18 +73,33 @@ class AgentChatJumpToLatestTest {
             val expectedBackground = rule.runOnIdle { background }
             val label = "${appStyle.name.lowercase()}-${if (darkTheme) "dark" else "light"}"
 
-            // The hit area surrounds the arrow. The samples stay inside the former pill and outside the glyph.
-            val marginSamples = listOf(
-                centerX / 2 to centerY, centerX * 3 / 2 to centerY,
-                centerX to centerY / 2, centerX to centerY * 3 / 2,
-            )
-            for ((x, y) in marginSamples) {
-                assertEquals("$label background at ($x, $y)", expectedBackground.toArgb(), bitmap.getPixel(x, y))
+            assertEquals("$label the control is round", bitmap.width, bitmap.height)
+            // Brief and Board draw smaller faces inside the hit area. Probe well into their corner regions.
+            val cornerDivisor = if (appStyle == AppStyle.Glass) 16 else 6
+            val insetX = bitmap.width / cornerDivisor
+            val insetY = bitmap.height / cornerDivisor
+            for (x in listOf(insetX, bitmap.width - insetX - 1)) for (y in listOf(insetY, bitmap.height - insetY - 1)) {
+                assertEquals("$label keeps the page around the circle at ($x, $y)", expectedBackground.toArgb(), bitmap.getPixel(x, y))
             }
-            val pageLuminance = expectedBackground.luminance()
+            // Keep samples off the glyph so they compare only the material and its outline.
+            val surfaceSamples = listOf(
+                centerX / 2 to centerY, centerX * 3 / 2 to centerY,
+                centerX to centerY / 2, centerX to 1,
+            )
+            val surfaceColor = bitmap.getPixel(centerX / 2, centerY)
+            assertTrue("$label draws a surface behind the arrow", surfaceColor != expectedBackground.toArgb())
+            if (appStyle == AppStyle.Glass) {
+                val home = rule.onNodeWithContentDescription("Reference home action").captureToImage().asAndroidBitmap()
+                assertEquals("$label home action width", home.width, bitmap.width)
+                assertEquals("$label home action height", home.height, bitmap.height)
+                for ((x, y) in surfaceSamples) {
+                    assertEquals("$label home material at ($x, $y)", home.getPixel(x, y), bitmap.getPixel(x, y))
+                }
+            }
+            val surfaceLuminance = Color(surfaceColor).luminance()
             assertTrue("$label arrow needs a visible stroke", (centerY / 2..centerY * 3 / 2).any { y ->
                 val inkLuminance = Color(bitmap.getPixel(centerX, y)).luminance()
-                (maxOf(inkLuminance, pageLuminance) + 0.05f) / (minOf(inkLuminance, pageLuminance) + 0.05f) >= 3f
+                (maxOf(inkLuminance, surfaceLuminance) + 0.05f) / (minOf(inkLuminance, surfaceLuminance) + 0.05f) >= 3f
             })
             File(output, "agent-jump-$label.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         }
@@ -91,11 +115,13 @@ class AgentChatJumpToLatestTest {
             }
         }
 
-        rule.onNodeWithText("123").assertIsDisplayed()
+        val count = rule.onNodeWithText("123").assertIsDisplayed()
         val jump = rule.onNodeWithContentDescription("Jump to latest, 123 new messages")
         val bounds = jump.fetchSemanticsNode().boundsInRoot
+        val countBounds = count.fetchSemanticsNode().boundsInRoot
         val minimum = with(rule.density) { 48.dp.toPx() }
         assertTrue("Jump to latest touch target is $bounds", bounds.width >= minimum && bounds.height >= minimum)
+        assertTrue("The count sits beside the button", countBounds.right <= bounds.left || countBounds.left >= bounds.right)
         jump.performTouchInput { click() }
         rule.runOnIdle { assertEquals(1, clicks) }
     }
