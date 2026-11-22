@@ -9,6 +9,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
@@ -47,7 +48,9 @@ internal fun DiffNavigation(diff: ToolDiff, list: LazyListState, expanded: Boole
 
 private enum class ReaderSlot { Top, Bottom, Content }
 
-/** Keeps the collapse chip above the clipped transcript and floats bottom navigation above [bottomInset] without resizing the list. */
+internal object PlanReaderFooter
+
+/** Keeps the collapse chip above the transcript. A plan gets its own footer, and a lone jump action floats. */
 @Composable
 internal fun ChatReaderLayout(
     modifier: Modifier,
@@ -61,25 +64,29 @@ internal fun ChatReaderLayout(
         val loose = constraints.copy(minWidth = 0, minHeight = 0)
         val touchHeight = Tokens.MinTouch.android.roundToPx()
         val footerInset = bottomInset.roundToPx().coerceIn(0, constraints.maxHeight)
-        val readingHeight = constraints.maxHeight
-        val collapseRoom = (readingHeight - footerInset - touchHeight).coerceAtLeast(0)
+        val pageHeight = constraints.maxHeight
+        val collapseRoom = (pageHeight - footerInset - touchHeight).coerceAtLeast(0)
         val top = subcompose(ReaderSlot.Top, collapse).singleOrNull()
             ?.takeIf { collapseRoom >= touchHeight }
             ?.measure(loose)
             ?.takeIf { it.height <= collapseRoom }
         val clippedTop = top?.height ?: 0
         val navigationCeiling = maxOf(topInset.roundToPx(), clippedTop)
-        val navigationRoom = (readingHeight - footerInset - navigationCeiling - touchHeight).coerceAtLeast(0)
-        val bottom = subcompose(ReaderSlot.Bottom, navigation).singleOrNull()
+        val navigationRoom = (pageHeight - footerInset - navigationCeiling - touchHeight).coerceAtLeast(0)
+        val navigationRow = subcompose(ReaderSlot.Bottom, navigation).singleOrNull()
             ?.takeIf { navigationRoom >= touchHeight + Tokens.Space.s.roundToPx() }
-            ?.measure(loose.copy(maxHeight = navigationRoom))
+        val bottom = navigationRow?.measure(loose.copy(maxHeight = navigationRoom))
+        val bottomTop = bottom?.let { (pageHeight - footerInset - it.height).coerceAtLeast(navigationCeiling) } ?: pageHeight
+        val reserveFooter = navigationRow?.layoutId == PlanReaderFooter
+        val readingHeight = if (reserveFooter) bottomTop else pageHeight
+        val listBottomInset = if (reserveFooter) Tokens.Space.flush else bottomInset
 
-        // Keep the reverse list's height and bottom inset constant as floating controls appear and disappear:
-        // shrinking the list shifts messages upward and carves an empty band below them, and resizing for the
-        // collapse chip can hide the row that triggered it and oscillate at group boundaries.
+        // The plan sits outside the transcript so it cannot cover a message. A lone jump button
+        // keeps the reverse list's height and inset steady. Clip for the collapse chip so its own
+        // appearance cannot hide the row that triggered it and oscillate at group boundaries.
         val transcript = subcompose(ReaderSlot.Content) {
             Layout(
-                content = { Box(Modifier.fillMaxSize()) { content(bottomInset) } },
+                content = { Box(Modifier.fillMaxSize()) { content(listBottomInset) } },
                 modifier = Modifier.clipToBounds(),
             ) { measurables, viewport ->
                 val listBody = measurables.single().measure(Constraints.fixed(viewport.maxWidth, readingHeight))
@@ -90,7 +97,7 @@ internal fun ChatReaderLayout(
         layout(constraints.maxWidth, constraints.maxHeight) {
             transcript.place(0, clippedTop)
             top?.placeRelative(0, 0)
-            bottom?.placeRelative(0, (readingHeight - footerInset - bottom.height).coerceAtLeast(navigationCeiling))
+            bottom?.placeRelative(0, bottomTop)
         }
     }
 }

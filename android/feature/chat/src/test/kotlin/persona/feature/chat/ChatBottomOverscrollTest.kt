@@ -73,8 +73,8 @@ import persona.core.domain.sort.SessionRenamer
  * Regression coverage for bottom overscroll and floating reader navigation (#13074):
  * - Overscrolling past the newest edge dismisses the keyboard but never exits `followsEnd`, never shows `JumpToLatest`,
  *   and never shifts messages upward.
- * - Showing `JumpToLatest` (alone or alongside `PlanPill`) floats above the composer without shrinking the transcript
- *   height in Glass, Brief, and Board.
+ * - A lone `JumpToLatest` floats above the composer without shrinking the transcript height in Glass, Brief, and Board.
+ *   A visible `PlanPill` reserves its row so the controls leave the newest message readable.
  * - Returning to the bottom (including small pixel settle offsets and drag stop/cancel races) reliably restores
  *   `followsEnd = true` and hides `JumpToLatest`.
  */
@@ -290,7 +290,16 @@ class ChatBottomOverscrollTest {
         }
     }
 
-    @Test fun planPillAndJumpToLatestFloatWithoutShrinkingOrCollidingAcrossStyles() {
+    @Test fun planPillLeavesTheNewestMessageReadable() {
+        mountChat(agentKey, { AppStyle.Glass }, items = plannedHistory())
+        val newest = rule.onNodeWithText("Follow-up message 45", substring = true)
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val pill = rule.onNode(hasContentDescription("Step 2 of 3", substring = true))
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertFalse("Plan pill $pill covers newest message $newest", pill.overlaps(newest))
+    }
+
+    @Test fun planPillAndJumpToLatestShareTheFooterWithoutCollidingAcrossStyles() {
         var style by mutableStateOf(AppStyle.Glass)
         mountChat(agentKey, { style }, items = plannedHistory())
 
@@ -308,11 +317,11 @@ class ChatBottomOverscrollTest {
             }
 
             val transcriptAfter = chatListNode().fetchSemanticsNode().boundsInRoot
-            assertEquals("showing navigation controls must not shrink transcript in $each", transcriptBefore, transcriptAfter)
+            assertEquals("showing the jump control keeps the existing transcript bounds in $each", transcriptBefore, transcriptAfter)
             val jump = jumpNode().assertIsDisplayed().fetchSemanticsNode().boundsInRoot
             assertTrue("Jump to latest $jump overlaps composer $composer in $each", jump.bottom <= composer.top)
 
-            // In Glass the collapsed work line surfaces the floating PlanPill alongside JumpToLatest.
+            // In Glass the collapsed work line surfaces PlanPill alongside JumpToLatest.
             if (each == AppStyle.Glass) {
                 val pill = rule.onNode(hasContentDescription("Step 2 of 3", substring = true))
                     .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
