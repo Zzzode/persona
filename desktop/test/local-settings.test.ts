@@ -36,11 +36,21 @@ test("local login-item IPC is separate from the surviving hub window's public br
   for (const name of ["desktop:login-get", "desktop:login-set"]) assert.match(hub, new RegExp(`"${name}"`));
 });
 
-test("quitting while setup is the only window does not open setup again (#9458)", async () => {
+test("closing setup when no main window exists quits cleanly without respawning (#9458)", async () => {
   const main = await source("main.ts");
   const closed = main.slice(main.indexOf('setup.once("closed"'), main.indexOf("const removeIPC = installSetupIPC"));
   assert.ok(closed.includes("if (quitting) return;"), "setup's closed handler must stop once the app is quitting");
-  assert.ok(closed.indexOf("if (quitting) return;") < closed.indexOf("showMain()"), "the quitting check must come before reopening");
+  assert.ok(!closed.includes("showMain("), "closing setup must never respawn main/setup in a loop");
+  assert.ok(!closed.includes("showSetup("), "closing setup must never reopen setup");
+  assert.ok(closed.includes("app.quit()"), "closing onboarding or recovery with no main window must exit Persona");
   // Every quit (menu, Dock, signal, tray) passes before-quit, which runs before windows close.
   assert.match(main, /app\.on\("before-quit", \(\) => \{ quitting = true;/);
+});
+
+test("after Persona Link pairing succeeds, clicking sign-in connects to the Hub directly without bouncing back", async () => {
+  const script = await source("setup.js");
+  const idx = script.indexOf("usePairedHubButton.addEventListener");
+  assert.notEqual(idx, -1, "setup.js must wire #use-paired-hub");
+  const handler = script.slice(idx, script.indexOf("});", idx) + 3);
+  assert.match(handler, /window\.desktopSetup\.saveHub\(pairedSuggestedHub\)/, "must connect directly using saveHub(pairedSuggestedHub)");
 });
