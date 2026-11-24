@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash, createSign, generateKeyPairSync } from "node:crypto";
 import test from "node:test";
-import { certificateSPKIPin, isValidPin, verifyPinnedCertificate } from "../src/tls-pin.js";
+import { allowPinnedSessionRequest, certificateSPKIPin, isValidPin, verifyPinnedCertificate } from "../src/tls-pin.js";
 
 function derLength(len: number): Buffer {
   if (len < 0x80) return Buffer.from([len]);
@@ -86,28 +86,35 @@ test("pinned verification accepts matching SPKI, rejects mismatch, and falls bac
   assert.equal(
     verifyPinnedCertificate(
       { hostname: "192.0.2.10", certificateData: certA, verificationResult: "CERT_AUTHORITY_INVALID" },
-      { hostname: "192.0.2.10", fp: pinA },
+      { origin: "https://192.0.2.10:18662", fp: pinA },
     ),
     0,
   );
   assert.equal(
     verifyPinnedCertificate(
       { hostname: "2001:db8::1", certificateData: certA, verificationResult: "CERT_AUTHORITY_INVALID" },
-      { hostname: "[2001:db8::1]", fp: pinA },
+      { origin: "https://[2001:db8::1]:18662", fp: pinA },
     ),
     0,
   );
   assert.equal(
     verifyPinnedCertificate(
       { hostname: "192.0.2.10", certificateData: certB, verificationResult: "CERT_AUTHORITY_INVALID" },
-      { hostname: "192.0.2.10", fp: pinA },
+      { origin: "https://192.0.2.10:18662", fp: pinA },
+    ),
+    -2,
+  );
+  assert.equal(
+    verifyPinnedCertificate(
+      { hostname: "192.0.2.10", certificateData: certA, verificationResult: "CERT_AUTHORITY_INVALID" },
+      { origin: "not-a-url", fp: pinA },
     ),
     -2,
   );
   assert.equal(
     verifyPinnedCertificate(
       { hostname: "other.example.com", certificateData: certA, verificationResult: "OK" },
-      { hostname: "192.0.2.10", fp: pinA },
+      { origin: "https://192.0.2.10:18662", fp: pinA },
     ),
     -3,
   );
@@ -118,4 +125,35 @@ test("pinned verification accepts matching SPKI, rejects mismatch, and falls bac
     ),
     -3,
   );
+});
+
+test("pinned sessions restrict the pinned hostname to exact https/wss origin and port", () => {
+  const { pin } = makeSelfSignedECert();
+  const pinned = { origin: "https://192.0.2.10:18662", fp: pin };
+
+  assert.equal(allowPinnedSessionRequest("https://192.0.2.10:18662/api/v1/auth", pinned), true);
+  assert.equal(allowPinnedSessionRequest("wss://192.0.2.10:18662/ws", pinned), true);
+  assert.equal(allowPinnedSessionRequest("https://192.0.2.10:8443/api", pinned), false);
+  assert.equal(allowPinnedSessionRequest("https://192.0.2.10/api", pinned), false);
+  assert.equal(allowPinnedSessionRequest("wss://192.0.2.10:8443/ws", pinned), false);
+  assert.equal(allowPinnedSessionRequest("http://192.0.2.10:18662/", pinned), false);
+  assert.equal(allowPinnedSessionRequest("ws://192.0.2.10:18662/ws", pinned), false);
+  assert.equal(allowPinnedSessionRequest("https://example.com:8443/avatar.png", pinned), true);
+  assert.equal(allowPinnedSessionRequest("data:image/png;base64,AAA=", pinned), true);
+  assert.equal(allowPinnedSessionRequest("blob:https://192.0.2.10:18662/1234", pinned), true);
+  assert.equal(allowPinnedSessionRequest("http://192.0.2.10:8080/", undefined), true);
+
+  const defaultPortPin = { origin: "https://hub.example.com", fp: pin };
+  assert.equal(allowPinnedSessionRequest("https://hub.example.com:443/chat", defaultPortPin), true);
+  assert.equal(allowPinnedSessionRequest("wss://hub.example.com/ws", defaultPortPin), true);
+  assert.equal(allowPinnedSessionRequest("https://hub.example.com:18662/chat", defaultPortPin), false);
+
+  const ipv6Pin = { origin: "https://[2001:db8::1]:18662", fp: pin };
+  assert.equal(allowPinnedSessionRequest("https://[2001:db8::1]:18662/", ipv6Pin), true);
+  assert.equal(allowPinnedSessionRequest("wss://[2001:db8::1]:18662/ws", ipv6Pin), true);
+  assert.equal(allowPinnedSessionRequest("https://[2001:db8::1]/", ipv6Pin), false);
+  assert.equal(allowPinnedSessionRequest("http://[2001:db8::1]:18662/", ipv6Pin), false);
+
+  assert.equal(allowPinnedSessionRequest("not-a-url", pinned), false);
+  assert.equal(allowPinnedSessionRequest("https://192.0.2.10:18662/", { origin: "not-a-url", fp: pin }), false);
 });

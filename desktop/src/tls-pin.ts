@@ -36,6 +36,44 @@ export function certificateSPKIPin(pemOrDer: string | Buffer): string | undefine
   }
 }
 
+function effectivePort(url: URL): string {
+  if (url.port) return url.port;
+  if (url.protocol === "https:" || url.protocol === "wss:") return "443";
+  if (url.protocol === "http:" || url.protocol === "ws:") return "80";
+  return "";
+}
+
+function parsePinnedOrigin(pin: HubPin): URL | undefined {
+  try {
+    const parsed = new URL(pin.origin);
+    return parsed.protocol === "https:" && parsed.hostname ? parsed : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Restrict requests within a pinned session so Chromium's hostname-only `setCertificateVerifyProc`
+ * callback cannot apply the pin to another port or plaintext scheme on the same hostname.
+ */
+export function allowPinnedSessionRequest(rawURL: string, pin: HubPin | undefined): boolean {
+  if (!pin || !isValidPin(pin.fp)) return true;
+  const pinned = parsePinnedOrigin(pin);
+  if (!pinned) return false;
+  let target: URL;
+  try {
+    target = new URL(rawURL);
+  } catch {
+    return false;
+  }
+  const networkScheme = target.protocol === "https:" || target.protocol === "wss:"
+    || target.protocol === "http:" || target.protocol === "ws:";
+  if (!networkScheme) return true;
+  if (normalizeHostname(target.hostname) !== normalizeHostname(pinned.hostname)) return true;
+  return (target.protocol === "https:" || target.protocol === "wss:")
+    && effectivePort(target) === effectivePort(pinned);
+}
+
 /**
  * Electron `session.setCertificateVerifyProc` verdict:
  * - `-3`: fall back to Chromium's system CA / hostname verification (when unpinned or for any other host)
@@ -44,10 +82,12 @@ export function certificateSPKIPin(pemOrDer: string | Buffer): string | undefine
  */
 export function verifyPinnedCertificate(
   request: CertificateVerifyRequest,
-  pin: { readonly hostname: string; readonly fp: string } | undefined,
+  pin: HubPin | undefined,
 ): number {
   if (!pin || !isValidPin(pin.fp)) return -3;
-  if (normalizeHostname(request.hostname) !== normalizeHostname(pin.hostname)) return -3;
+  const pinned = parsePinnedOrigin(pin);
+  if (!pinned) return -2;
+  if (normalizeHostname(request.hostname) !== normalizeHostname(pinned.hostname)) return -3;
   const actual = certificateSPKIPin(request.certificateData);
   if (!actual || !isValidPin(actual)) return -2;
   const a = Buffer.from(actual, "utf8");

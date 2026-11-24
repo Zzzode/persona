@@ -54,3 +54,25 @@ test("after Persona Link pairing succeeds, clicking sign-in connects to the Hub 
   const handler = script.slice(idx, script.indexOf("});", idx) + 3);
   assert.match(handler, /window\.desktopSetup\.saveHub\(pairedSuggestedHub\)/, "must connect directly using saveHub(pairedSuggestedHub)");
 });
+
+test("pinned TLS sessions enforce exact-origin requests and refresh when mainWindow is reused", async () => {
+  const main = await source("main.ts");
+  const helper = main.slice(main.indexOf("async function applySessionPin"), main.indexOf("const island = new NotchIsland"));
+  assert.ok(helper.includes("webRequest.onBeforeRequest"), "must install webRequest.onBeforeRequest guard");
+  assert.ok(helper.includes("allowPinnedSessionRequest"), "must filter pinned-hostname requests by exact origin");
+  assert.ok(helper.includes("setCertificateVerifyProc"), "must install SPKI pin verifier");
+  assert.ok(helper.includes("closeAllConnections"), "must close pooled connections on pin change or refresh");
+
+  const showMain = main.slice(main.indexOf("async function showMain"), main.indexOf("async function showSetup"));
+  const reused = showMain.slice(showMain.indexOf("if (mainWindow && !mainWindow.isDestroyed())"), showMain.indexOf("const state = restoreWindow"));
+  const refreshAt = reused.indexOf("await applySessionPin(mainWindow, owner)");
+  const loadAt = reused.indexOf("await mainWindow.loadURL(initial)");
+  assert.notEqual(refreshAt, -1, "reused mainWindow must refresh session pin");
+  assert.notEqual(loadAt, -1, "reused mainWindow must load initial pairing URL when queued");
+  assert.ok(refreshAt < loadAt, "reused mainWindow must refresh pin and clear connections before loadURL(initial)");
+  assert.ok(reused.includes("initial || windowPins.get(mainWindow) !== sessionPinKey(activePinFor(owner))"),
+    "reused mainWindow must refresh on initial URL or active pin changes");
+
+  const freshLoad = showMain.slice(showMain.indexOf("if (owner) {"), showMain.indexOf("await current.loadURL(targetURL)"));
+  assert.ok(freshLoad.includes("await applySessionPin(current, owner)"), "new mainWindow must apply session pin before loadURL");
+});

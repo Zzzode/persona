@@ -5,7 +5,8 @@ import type { HubAddress } from "./urls.js";
 import { appPairingURL } from "./pairing.js";
 import { parseConnectInput } from "./connect-input.js";
 import { classifyConnectError } from "./connect-errors.js";
-import { isValidPin, verifyPinnedCertificate } from "./tls-pin.js";
+import { allowPinnedSessionRequest, isValidPin, verifyPinnedCertificate } from "./tls-pin.js";
+import type { HubPin } from "./tls-pin.js";
 import { installDesktopIPC, DesktopNotifications } from "./ipc.js";
 import { PageRoutes } from "./page-routes.js";
 import { installSetupIPC, installSetupProtocol } from "./setup-ipc.js";
@@ -52,11 +53,36 @@ const pageRoutes = new WeakMap<BrowserWindow, PageRoutes>();
 function openRoute(window: BrowserWindow | undefined, route: string): void {
   if (window && !window.isDestroyed()) pageRoutes.get(window)?.open(route);
 }
-function activePinFor(address: HubAddress | undefined): { readonly hostname: string; readonly fp: string } | undefined {
+function activePinFor(address: HubAddress | undefined): HubPin | undefined {
   if (!address) return undefined;
   const fp = hubPins[address.url.origin];
   if (!fp || !isValidPin(fp)) return undefined;
-  return { hostname: address.url.hostname, fp };
+  return { origin: address.url.origin, fp };
+}
+const windowPins = new WeakMap<BrowserWindow, string | undefined>();
+function sessionPinKey(pin: HubPin | undefined): string | undefined {
+  return pin ? `${pin.origin}#${pin.fp}` : undefined;
+}
+async function applySessionPin(window: BrowserWindow, owner: HubAddress): Promise<void> {
+  if (window.isDestroyed()) return;
+  const pin = activePinFor(owner);
+  const ses = window.webContents.session;
+  ses.webRequest.onBeforeRequest(
+    pin
+      ? (details, callback) => {
+          callback({ cancel: !allowPinnedSessionRequest(details.url, pin) });
+        }
+      : null,
+  );
+  ses.setCertificateVerifyProc((request, callback) => {
+    callback(verifyPinnedCertificate({
+      hostname: request.hostname,
+      certificateData: request.certificate.data,
+      verificationResult: request.verificationResult,
+    }, pin));
+  });
+  windowPins.set(window, sessionPinKey(pin));
+  await ses.closeAllConnections();
 }
 // The island at the MacBook notch (#7669): off until the person turns it on; a clicked row opens as a notification does.
 const island = new NotchIsland(route => {
@@ -144,7 +170,12 @@ async function showMain(): Promise<BrowserWindow | undefined> {
       ? pendingInitialURL.href
       : undefined;
     pendingInitialURL = undefined;
+    if (initial || windowPins.get(mainWindow) !== sessionPinKey(activePinFor(owner))) {
+      await applySessionPin(mainWindow, owner);
+      if (quitting || owner !== hub || generation !== hubWindow.generation || mainWindow.isDestroyed()) return undefined;
+    }
     if (initial) await mainWindow.loadURL(initial);
+    if (quitting || owner !== hub || generation !== hubWindow.generation || mainWindow.isDestroyed()) return undefined;
     mainWindow.show();
     return mainWindow;
   }
@@ -242,15 +273,7 @@ async function showMain(): Promise<BrowserWindow | undefined> {
   current.webContents.on("render-process-gone", () => island.forget(page));
   current.once("closed", () => { removeIPC(); island.forget(page); if (mainWindow === current) mainWindow = undefined; });
   if (owner) {
-    const pin = activePinFor(owner);
-    current.webContents.session.setCertificateVerifyProc((request, callback) => {
-      callback(verifyPinnedCertificate({
-        hostname: request.hostname,
-        certificateData: request.certificate.data,
-        verificationResult: request.verificationResult,
-      }, pin));
-    });
-    await current.webContents.session.closeAllConnections();
+    await applySessionPin(current, owner);
     const targetURL = pendingInitialURL && pendingInitialURL.origin === owner.url.origin && inHub(owner, pendingInitialURL.href)
       ? pendingInitialURL.href
       : owner.url.href;
