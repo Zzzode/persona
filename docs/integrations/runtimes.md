@@ -218,7 +218,9 @@ The list carries only recent sessions (`rt.recent`). A caller reading an older p
   if two runtimes' launchers clash, only the one that connected first provides it.
   A local `agy` launcher supplies the model catalog and starts in a pane when the selected host is herdr (#10237),
   including when herdr is the default and the node detects the local CLI. The connected companion serves Assistant
-  and terminal-less Agent requests (the node RPC can target `host: "agy"`). A shell alias, function or helper definition
+  and terminal-less Agent requests (the node RPC can target `host: "agy"`); the assistant's `task_plan` and `agent_start`
+  target it for an agy launcher it runs when they name no host, and a start targeting it while it is not connected is
+  refused with `agy_companion_offline` (#13447). A shell alias, function or helper definition
   named `agy` still has precedence over automatic companion selection (#9181).
 
 ## Minimal example
@@ -559,6 +561,13 @@ input clears the previous reply preview, including input with no visible text. T
 until the assistant writes response text. This keeps user-authored questions out of awaiting-reply detection while
 preserving genuine assistant questions. User messages and tool records remain available in the conversation items.
 
+agy leaves print-mode (`agy -p`) conversations untitled. Before falling back to the folder name, the session title uses
+the first non-empty line of the cached metadata `summary.Preview`, with agy's request wrapper and Persona's context
+removed, cut to 60 characters (#14629). Several one-shot runs in one folder then show their own prompts. Such a title
+carries `title_source: "prompt"`, so the node keeps that provenance for the agy pane and Persona's naming may replace it.
+A preview whose first line is Persona's context (`Content of persona-context:…`, `<persona-context …>`) gives no title:
+agy keeps only that line, so the block cannot be removed whole.
+
 A session is listed `unknown` when the evidence cannot say working, idle or done (`transcriptState` in
 `integrations/antigravity/lib/map.js`). It is never guessed as idle: an idle native summary closes a turn only when its
 step count covers the last exported step. The companion logs why, as reason counts, each time the tally across listed
@@ -568,6 +577,18 @@ summary's step count does not cover the last exported step), `no_step_index`, an
 response, tool result or error has been exported). A failed summary read is logged when it starts or its cause changes,
 with SQLite's result-code text only, and once more when reads recover, with the number of failures. The lines carry no
 session IDs, message text or paths; under `personad node` they appear in the node log after `agy runtime:`.
+
+What subagents and background tasks send back reaches the CLI companion's chat (#14625). agy 1.5.15 writes each
+as a `SYSTEM_MESSAGE` step whose body is `[Message] … sender=<id> … content=<text>`; the companion maps it to a
+`notice` item with a `task` note (`integrations/antigravity/lib/map.js`): a subagent's report or its "has gone idle"
+response is `kind: "agent"` with the report as `detail`, a background task's result (`sender=<conversation>/task-N`)
+is `kind: "task"` titled `task-N` with its status and exit code, and agy's own notices (stopped by a server restart)
+are `kind: "task"` too. A page cuts a `detail` longer than 24 KiB and sets `full_size`; `session.item` returns it
+whole. `SYSTEM_MESSAGE` steps without that header, such as agy's injected "Reminder" prompts, stay hidden. These
+notices never carry `wake`: when one wakes the agent after its reply, the generic `wake` notice described below still
+opens the new exchange with the resumed step, because a client may already hold the earlier notice. `invoke_subagent`
+cards take their description from `toolSummary`, else `Role`, else `TypeName`, and their prompt from `Subagents`,
+else `Prompt`. Panes read by the node (`server/internal/node/agytranscript.go`) do not map these yet.
 
 CLI companion sessions and herdr panes show images from exported tool results. Conversation pages carry only image
 references; Persona loads the bytes when an image is shown. It accepts PNG, JPEG, GIF and WebP up to 1,152 KiB from
@@ -586,16 +607,28 @@ on), so a stale plugin never blocks agy; `--no-media-guard` keeps the companion 
 message from Persona get the same check: a broken one is left out of the prompt with a line saying so.
 
 Native model errors can be omitted from the JSONL export even when ACP reports a completed prompt. When an idle
-summary has unexported steps, the companion reads at most the final eight native steps with `GetCascadeTrajectorySteps`.
-The result is cached against the summary and exported branch. Discovery opens the native service through read-only
-session listing. An omitted terminal error uses the shared assistant-text `API Error:` representation for the existing error card
-and populates the session's `turn_error`
+summary has unexported steps among its final eight, the companion reads them with `GetCascadeTrajectorySteps`, starting
+at the first unexported index, and puts every `ERROR_MESSAGE` back at its own index (#14627). A conversation another agy
+process created is not in the companion's service, so when the read returns no step for an unexported index the companion
+loads the conversation (`session/resume`) and reads once more; a step still absent is not in the native trajectory (a
+summary ahead of a rewind) and shows nothing. A step that came back is not read again on the same exported branch;
+inserting an error before the export's last step adds `:native-errors:<indices>` to the history token so clients
+reload. If the read or the load fails, the turn shows `Persona could not read this turn's result from Antigravity.` as
+its error and the history token gains `:native-read-failed`, so a later read that replaces or drops that error
+reloads clients and refreshes the row. The read is retried at most twice, 30 seconds apart, while the summary and export stay the same. Discovery opens the
+native service through read-only session listing. An omitted error uses the shared assistant-text `API Error:`
+representation for the existing error card, and a terminal one populates the session's `turn_error`
 fields, including a subscription reset timestamp supplied in native quota metadata. When Antigravity gives only its
 generic `Agent execution terminated due to error.`, the text is the native short error with the `ErrorInfo` reason
 (`INVALID_ARGUMENT (code 400): … (INVALID_MEDIA)`). A 4xx other than 401, 408 and 429 is a request the service refuses
 as it is (a picture in the history it cannot decode, an invalid argument): a Continue sends it again, so it is published
-as `turn_error_kind: "user"` (#11742). New input and rewinds invalidate
-that result. Rejected ACP prompts also publish their failure through the session's error state.
+as `turn_error_kind: "user"` (#11742). New input clears the session's `turn_error` while the error stays in the
+history; a rewind drops recovered errors past its cut. Rejected ACP prompts also publish their failure through the session's error state.
+agy can also stream a failed model request as the turn's only message text, `⚠ FAILED_PRECONDITION (code 400): …`, end
+the prompt normally, leave the error out of the export and leave its summary behind (#14628). When a turn with no thinking
+or tool activity streams exactly that one-line shape (`streamedErrorInfo` in `integrations/antigravity/lib/errors.js`), it
+is the turn's error, classified by its code like a native error, not a reply. It is kept as an `API Error:` notice on the
+turn's input, so it stays in history after later steps export, and that input settles the session `idle`.
 The history token includes the error format so connected clients refresh items cached before this representation.
 
 **Gemini API key provider** (#13762). agy can run on a Gemini API key (`"modelProvider": "gemini"` in agy's `settings.json`, with
@@ -623,7 +656,10 @@ The CLI companion runs the **Antigravity CLI (`agy`)**. When `personad node`
 runs (`--attach` or `--stdio`), `agy` is installed, Node.js 22.5+ (`node:sqlite`) is available, and no external `agy`
 runtime is connected on `runtime.sock`, the node automatically writes out the embedded `persona-antigravity-runtime`
 package and supervises `antigravity/companion.mjs` (passing `--no-update --parent-stdin`), yielding whenever an external
-`agy` runtime connects (`server/internal/node/agybridge.go`). You can also start
+`agy` runtime connects (`server/internal/node/agybridge.go`). The node resolves `agy` when it starts the companion and
+looks again every 30 seconds while it runs (#14533): when the path or the file there changed (replaced by an update,
+installed elsewhere, removed) and two looks in a row agree, it restarts the companion on the `agy` found now, waiting
+while one of its sessions is working or a call to it is pending (the old file keeps running until then). You can also start
 `node integrations/antigravity/companion.mjs` manually from the repository root, or install into the runtime package store
 with `node integrations/antigravity/install.mjs` and supervise
 `node ~/.persona/runtime-packages/persona-antigravity-runtime/current/antigravity/companion.mjs` under launchd / systemd.
@@ -667,9 +703,13 @@ mode and adds one reloadable notice through the existing localized runtime-notic
 authoritative over later settings-file changes. A mode taken from agy's settings is read again on each session projection
 and applied again before the next prompt, so changing `agentMode` needs no companion restart. External session models stay
 unspecified until native metadata is available. Session discovery does not resume them.
+An Antigravity CLI from before `session/set_mode` answers it with -32601 (#14533): a request for `default` is then a no-op
+(the session is already in the CLI's own default), and any other mode fails with "This Antigravity CLI (agy) is too old to
+switch to the … mode … Please update agy.", which launcher health classes as `cli_outdated`.
 
 Availability checks use optional `check({launcher, cwd, prompt})` (`caps.check`) through the companion's authenticated
-ACP client. They run the existing one-word probe, cancel tool permission requests, and close their temporary session
+ACP client. They switch the probe session to `default` only when `session/new` lists that mode (or lists none), and a CLI
+without `session/set_mode` skips the switch. They run the existing one-word probe, cancel tool permission requests, and close their temporary session
 on success, failure or timeout. Completed probe workspaces stay out of the user inventory after companion restarts.
 The runtime bounds native calls to a 75-second budget, followed by bounded session cleanup. Older runtimes keep the
 node's shell check. Shell and managed launchers keep their own execution context.
@@ -726,6 +766,11 @@ identifies its loopback native service. `RevertToCascadeStep` receives `conversa
 index, including `-1` for an empty conversation. Native refusal propagates to the caller. The bridge uses the current
 native summary and replacement step indices to discard the abandoned export tail, then publishes a changed history
 token. This survives companion restarts without modifying native transcript files.
+A reused lower index is not proof of a rewind: when the export goes past the replaced steps before the replacement run
+reaches their last index, another process wrote the same conversation. The bridge then keeps both runs, ordered by
+step index (old steps first), and changes the content revision (#14626). If the replacement run later exports an index
+inside the restored steps (a rewind whose parallel results arrived out of order, #11086), it did re-cover them: the bridge
+drops them again for good. A second writer that goes on into those indices is treated the same way.
 
 Antigravity declares `caps.fork` for Agent and Assistant chats. `ForkConversation` keeps the existing workspace and
 copies through an inclusive native step index. The bridge resolves a reply from the exported transcript and stops

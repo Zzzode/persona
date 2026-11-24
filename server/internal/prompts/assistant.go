@@ -112,8 +112,11 @@ type AssistantHealthClaudeMD struct {
 	StateDir string
 	// HealthDir is the health space's directory name in StateDir: "" is the built-in manager's "health", another's
 	// "health-<id>" (identity.HealthDirName).
-	HealthDir string
-	Language  string
+	HealthDir      string
+	Language       string
+	Water          bool // The owner's added intake items; false when the Health module is absent or unavailable.
+	Protein        bool
+	ItemsAvailable bool // The module can add items, including when neither intake item is added yet.
 }
 
 func RenderAssistantHealthClaudeMD(d AssistantHealthClaudeMD) string {
@@ -324,10 +327,13 @@ type SnapshotProfile struct {
 	Unreadable, Gone bool
 }
 
-// SnapshotTier is one tier of the profile in use: what an Agent started on it runs on ("" model or effort: the
-// launcher's), and when to use it.
+// SnapshotTier is one tier of the profile in use: what an Agent started on it runs on first ("" model or effort: the
+// launcher's), how many other candidates follow it (the hub picks among them at dispatch), the older names it answers
+// to, and when to use it.
 type SnapshotTier struct {
 	Name, Launcher, Model, Effort, Speed, PermissionMode, Description string
+	More                                                              int
+	Aliases                                                           []string
 }
 
 // Snapshot is the live context a starting assistant gets in its system prompt.
@@ -834,15 +840,6 @@ type ChatReply struct {
 }
 
 func RenderChatReply(d ChatReply) string { return render("assistant/chat_reply", d) }
-
-// ChatReplyHint is the one-time note to a conversation that wrote into a chat as the user while assistant.chat_reply_relay
-// is off (the default): others replied there, Persona does not pass it on, and the owner can turn that on.
-type ChatReplyHint struct {
-	Language, Title string
-	Group           bool
-}
-
-func RenderChatReplyHint(d ChatReplyHint) string { return render("assistant/chat_reply_hint", d) }
 
 // AskTodoAnswer is the message to the conversation whose ask_user question became a to-do (#1617): the user's call on it
 // (Thread: said in the to-do's Lark topic), or that the to-do was closed without one (Dropped). The questions and choices
