@@ -62,8 +62,8 @@ describe("the terminal's colors", () => {
     const light = terminalColors("page");
     pageScheme(true);
     const dark = terminalColors("page");
-    expect(light.background).toBe("#fafafb");
-    expect(dark.background).toBe("#17181a");
+    expect(light.background).toBe("#f1f1f4");
+    expect(dark.background).toBe("#0b0b0c");
     expect(dark.black).not.toBe(dark.foreground); // a visible black on dark
   });
 

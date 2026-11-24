@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { BrowserWindow, Menu, app, dialog, protocol, screen, shell, powerMonitor, Notification } from "electron";
+import { BrowserWindow, Menu, app, dialog, nativeTheme, protocol, screen, shell, powerMonitor, Notification } from "electron";
 import { parseDeepLink, parseHubAddress, externalBrowserURL, inHub } from "./urls.js";
 import type { HubAddress } from "./urls.js";
 import { appPairingURL } from "./pairing.js";
@@ -40,6 +40,7 @@ let screenLocked = false;
 let presenceTimer: ReturnType<typeof setInterval> | undefined;
 const hubWindow = new HubWindowLifecycle<BrowserWindow | undefined>();
 const store = () => JSONStore.inUserData(app.getPath("userData"));
+const windowBackground = () => (nativeTheme.shouldUseDarkColors ? "#111113" : "#f7f7f9");
 // Each hub window's routes wait until its page listens (page-routes.ts, #10282): no route is sent around them.
 const pageRoutes = new WeakMap<BrowserWindow, PageRoutes>();
 function openRoute(window: BrowserWindow | undefined, route: string): void {
@@ -133,7 +134,7 @@ async function showMain(): Promise<BrowserWindow | undefined> {
     show: false,
     title: "Persona",
     autoHideMenuBar: true,
-    backgroundColor: "#111111",
+    backgroundColor: windowBackground(),
     webPreferences: {
       preload: join(import.meta.dirname, "preload.cjs"),
       contextIsolation: true,
@@ -250,6 +251,7 @@ async function showSetup(): Promise<void> {
     height: 640,
     title: "Persona setup",
     autoHideMenuBar: true,
+    backgroundColor: windowBackground(),
     webPreferences: {
       preload: join(import.meta.dirname, "setup-preload.cjs"),
       contextIsolation: true,
