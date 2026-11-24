@@ -30,7 +30,7 @@
   [data-app-shell] > aside {
     background: var(--page);
     border-radius: var(--radius-card);
-    box-shadow: var(--shadow-panel);
+    box-shadow: var(--shadow-hairline);
   }
 
   /* The sidebar's usage dialog may extend beyond the rounded background. */
@@ -162,8 +162,6 @@
   --shadow-hairline: 0 0 0 1px #0000000d;
   --shadow-btn: 0 0 0 1px #00000017;
   --shadow-card: 0 0 0 1px #0000000a;
-  --shadow-card-hover: 0 0 0 1px #0000001a;
-  --shadow-panel: var(--shadow-hairline);
   --shadow-raised: 0 0 0 1px #00000012,0 4px 12px -2px #00000012;
   --shadow-overlay: 0 0 0 1px #00000014,0 12px 32px -4px #0000001f;
   --shadow-nav-preview: 0 12px 40px #00000014;
@@ -213,10 +211,8 @@
   --shadow-hairline: 0 0 0 1px rgba(255,255,255,.06);
   --shadow-btn: 0 0 0 1px rgba(255,255,255,.09);
   --shadow-card: 0 0 0 1px rgba(255,255,255,.04);
-  --shadow-card-hover: 0 0 0 1px rgba(255,255,255,.09);
-  --shadow-panel: 0 0 0 1px rgba(255,255,255,.05);
-  --shadow-raised: 0 0 0 1px rgba(255,255,255,.08), 0 4px 14px rgba(0,0,0,.45);
-  --shadow-overlay: 0 0 0 1px rgba(255,255,255,.1), 0 14px 36px rgba(0,0,0,.65);
+  --shadow-raised: 0 0 0 1px rgba(255,255,255,.08),0 4px 14px rgba(0,0,0,.45);
+  --shadow-overlay: 0 0 0 1px rgba(255,255,255,.1),0 14px 36px rgba(0,0,0,.65);
   --shadow-nav-preview: 0 12px 40px #00000060;
   --shadow-inset-field: inset 0 1px 2px #0006;
   --switch-on: #30d158;
@@ -345,9 +341,9 @@ body {
 @property --busy-cycles { syntax: "<number>"; inherits: false; initial-value: 1; }
 @keyframes indeterminate{0%{transform:translateX(-100%)}to{transform:translateX(300%)}}
 @keyframes pixel-on{0%,to{opacity:.15}18%,42%{opacity:1}62%{opacity:.15}}
-.card-interactive { transition: box-shadow 150ms ease, background-color 150ms ease, transform 150ms var(--ease-out-strong); }
+.card-interactive { transition: box-shadow .15s, background-color .15s, transform .15s var(--ease-out-strong); }
 @media (hover: hover) {
-  .card-interactive:hover { box-shadow: var(--shadow-card-hover); }
+  .card-interactive:hover:not(:focus-visible,:has(:focus-visible)) { box-shadow: var(--shadow-btn); }
   .dark .card-interactive:hover { background-color: var(--hover); }
 }
 .card-interactive:active { transform: scale(.994); }

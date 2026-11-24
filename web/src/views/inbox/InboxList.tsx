@@ -1086,7 +1086,7 @@ const AgentRow = memo(function AgentRow({ ix, off = false }: { ix: Interaction; 
   const ask = interactionAsk(ix);
   const glyph = IX_GLYPH[ix.kind];
   return (
-    <a href={href(to)} onClick={(e) => onLinkClick(e, to)} inert={off} className={cx("flex gap-3 rounded-[14px] bg-surface p-3 shadow-card transition-[background-color,box-shadow,opacity,transform] duration-150", off ? "opacity-45" : "card-interactive")}>
+    <a href={href(to)} onClick={(e) => onLinkClick(e, to)} inert={off} className={cx("flex gap-3 rounded-[14px] bg-surface p-3 shadow-card transition-opacity duration-150", off ? "opacity-45" : "card-interactive")}>
       <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-field text-attention">
         {glyph === "list" || glyph === "terminal" ? <Icon name={glyph} size={18} stroke={2} /> : <Glyph name={glyph} size={18} stroke={2} />}
       </span>
