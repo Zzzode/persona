@@ -105,7 +105,7 @@ struct DeviceCredentialTradeTests {
                 KeychainAccess(
                     read: { [self] account in lock.withLock { items[account].map { .found($0) } ?? .missing } },
                     write: { [self] data, account in lock.withLock { items[account] = data; return true } },
-                    delete: { [self] account in lock.withLock { items.removeValue(forKey: account) } }
+                    delete: { [self] account in lock.withLock { items[account] = nil } }
                 )
             }
         }
