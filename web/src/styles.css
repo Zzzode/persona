@@ -342,7 +342,7 @@ body {
 @keyframes pixel-on{0%,to{opacity:.15}18%,42%{opacity:1}62%{opacity:.15}}
 .card-interactive { transition: box-shadow .15s, background-color .15s, transform .15s var(--ease-out-strong); }
 @media (hover: hover) {
-  .card-interactive:hover:not(:focus-visible,:has(:focus-visible)) { box-shadow: var(--shadow-btn); }
+  .card-interactive:hover:not(:focus-visible,:has(:focus-visible),:has(a:focus-visible)) { box-shadow: var(--shadow-btn); }
   .dark .card-interactive:hover { background-color: var(--hover); }
 }
 .card-interactive:active { transform: scale(.994); }
