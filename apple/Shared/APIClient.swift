@@ -1370,6 +1370,8 @@ nonisolated struct APIClient: Sendable {
     struct DeviceTokens: Decodable, Sendable {
         var tokens: [DeviceToken]
         var current: String?
+        /// Credential IDs with a live connection to the hub; nil from an older hub.
+        var online: [String]?
         /// Per credential, the push way of the device it registered last; nil from an older hub.
         var push: [String: PushRoute]?
         /// Which device takes the phone tools' calls (docs/apple/phone-tools.md); nil from an older hub.

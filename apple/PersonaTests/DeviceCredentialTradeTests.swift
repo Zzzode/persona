@@ -135,4 +135,31 @@ struct DeviceCredentialTradeTests {
         #expect(try JSON.decoder.decode(JSONValue.self, from: bodies[0])["replaces"] == .string("dev_old"))
         #expect(try JSON.decoder.decode(JSONValue.self, from: bodies[1])["replaces"] == nil)
     }
+
+    @Test func deviceGroupsSplitAndSortByCurrentOnlineAndRecent() throws {
+        let older = Date(timeIntervalSince1970: 1_700_000_000)
+        let newer = Date(timeIntervalSince1970: 1_700_100_000)
+        let tokens = [
+            APIClient.DeviceToken(id: "phone-old", name: "Old Phone", kind: "phone", role: "full", createdAt: older, lastSeen: older),
+            APIClient.DeviceToken(id: "phone-live", name: "Live Phone", kind: "phone", role: "full", createdAt: older, lastSeen: older),
+            APIClient.DeviceToken(id: "phone-me", name: "This Phone", kind: "phone", role: "full", createdAt: older, lastSeen: older),
+            APIClient.DeviceToken(id: "web-1", name: "Browser", kind: "web", role: "full", createdAt: newer, lastSeen: newer),
+            APIClient.DeviceToken(id: "link-off", name: "Link Off", kind: "link", role: "link", createdAt: newer, lastSeen: newer),
+            APIClient.DeviceToken(id: "link-on", name: "Link On", kind: "link", role: "link", createdAt: older, lastSeen: older),
+            APIClient.DeviceToken(id: "scoped-1", name: "Scoped", kind: "web", role: "scoped", createdAt: newer, lastSeen: newer),
+            APIClient.DeviceToken(id: "revoked-1", name: "Gone", kind: "phone", role: "full", createdAt: older, revokedAt: newer),
+        ]
+        let grouped = DeviceGroups.group(tokens: tokens, current: "phone-me", online: ["phone-live", "link-on"])
+        #expect(grouped.sections.map(\.kind) == [.devices, .browsers, .links, .integrations])
+        #expect(grouped.sections[0].tokens.map(\.id) == ["phone-me", "phone-live", "phone-old"])
+        #expect(grouped.sections[1].tokens.map(\.id) == ["web-1"])
+        #expect(grouped.sections[2].tokens.map(\.id) == ["link-on", "link-off"])
+        #expect(grouped.sections[3].tokens.map(\.id) == ["scoped-1"])
+        #expect(grouped.revoked.map(\.id) == ["revoked-1"])
+
+        let withOnline = try JSON.decoder.decode(APIClient.DeviceTokens.self, from: Data(#"{"tokens":[],"current":"c","online":["c","l"]}"#.utf8))
+        #expect(withOnline.online == ["c", "l"])
+        let withoutOnline = try JSON.decoder.decode(APIClient.DeviceTokens.self, from: Data(#"{"tokens":[],"current":"c"}"#.utf8))
+        #expect(withoutOnline.online == nil)
+    }
 }

@@ -230,11 +230,70 @@ nonisolated enum DeviceCredentialTrade {
     }
 }
 
+/// Grouping and ordering for Settings › Devices, shared with web and Android (pure, for the tests).
+nonisolated enum DeviceGroupKind: String, CaseIterable, Hashable, Sendable {
+    case devices, browsers, links, integrations
+}
+
+nonisolated enum DeviceGroups {
+    struct Section: Identifiable, Hashable, Sendable {
+        var kind: DeviceGroupKind
+        var tokens: [APIClient.DeviceToken]
+        var id: DeviceGroupKind { kind }
+    }
+
+    static func kind(of token: APIClient.DeviceToken) -> DeviceGroupKind {
+        if token.role == "scoped" { return .integrations }
+        if token.kind == "web" { return .browsers }
+        if token.kind == "link" { return .links }
+        if token.kind == "phone" || token.kind == "watch" || (token.kind == "other" && token.role == "full") {
+            return .devices
+        }
+        return .integrations
+    }
+
+    static func group(
+        tokens: [APIClient.DeviceToken],
+        current: String?,
+        online: Set<String>
+    ) -> (sections: [Section], revoked: [APIClient.DeviceToken]) {
+        var buckets: [DeviceGroupKind: [APIClient.DeviceToken]] = [:]
+        var revoked: [APIClient.DeviceToken] = []
+        for token in tokens {
+            if token.revokedAt != nil {
+                revoked.append(token)
+            } else {
+                buckets[kind(of: token), default: []].append(token)
+            }
+        }
+        let byActivity: (APIClient.DeviceToken, APIClient.DeviceToken) -> Bool = { a, b in
+            if a.id == current { return true }
+            if b.id == current { return false }
+            let aOn = online.contains(a.id), bOn = online.contains(b.id)
+            if aOn != bOn { return aOn }
+            let ta = a.lastSeen ?? a.createdAt ?? .distantPast
+            let tb = b.lastSeen ?? b.createdAt ?? .distantPast
+            if ta != tb { return ta > tb }
+            return a.id < b.id
+        }
+        let sections = DeviceGroupKind.allCases.compactMap { k -> Section? in
+            guard var items = buckets[k], !items.isEmpty else { return nil }
+            items.sort(by: byActivity)
+            return Section(kind: k, tokens: items)
+        }
+        revoked.sort { ($0.revokedAt ?? .distantPast) > ($1.revokedAt ?? .distantPast) }
+        return (sections, revoked)
+    }
+}
+
 /// Settings › Devices: every device with its own credential, revocable one by one.
 struct DevicesView: View {
     @Environment(AppModel.self) private var model
     @State private var tokens: [APIClient.DeviceToken] = []
+    @State private var groups: [DeviceGroups.Section] = []
+    @State private var revoked: [APIClient.DeviceToken] = []
     @State private var current: String?
+    @State private var online: Set<String> = []
     /// Per credential, how the hub pushes to its device (#5998); empty from an older hub.
     @State private var push: [String: APIClient.PushRoute] = [:]
     /// Which device takes the phone tools' calls, and the choices it lists (`PhonePrimaryChoices`); nil from an older hub.
@@ -264,10 +323,16 @@ struct DevicesView: View {
             } footer: {
                 Text("Give another phone, Mac or browser a one-time pairing code, without going to the hub machine.")
             }
-            Section {
-                ForEach(tokens.filter { $0.revokedAt == nil }) { t in row(t) }
-            } footer: {
-                Text("Each device has its own credentials. If you lose one, revoke just that one; the others keep working. A watch can only view and answer; it can't change settings or start and stop agents.")
+            ForEach(Array(groups.enumerated()), id: \.element.id) { index, section in
+                Section {
+                    ForEach(section.tokens) { t in row(t) }
+                } header: {
+                    Text(groupTitle(section.kind))
+                } footer: {
+                    if index == groups.count - 1 {
+                        Text("Each device has its own credentials. If you lose one, revoke just that one; the others keep working. A watch can only view and answer; it can't change settings or start and stop agents.")
+                    }
+                }
             }
             if PhonePrimaryChoices.isShown(phone) {
                 Section {
@@ -285,7 +350,6 @@ struct DevicesView: View {
                     Text("When Persona needs your phone (your location, Health, reminders), it asks this device first. If it can't be reached, another of your devices answers and Persona says which. Automatic uses the device you used most recently.")
                 }
             }
-            let revoked = tokens.filter { $0.revokedAt != nil }
             if !revoked.isEmpty {
                 Section(String(localized: "section.revoked", defaultValue: "Revoked")) {
                     ForEach(revoked) { t in row(t).foregroundStyle(.secondary) }
@@ -343,9 +407,28 @@ struct DevicesView: View {
     private static let upgradeNote = String(localized: "After the hub updates, this iPhone switches to its own credentials automatically.")
     private static let revokeSelfNote = String(localized: "This iPhone disconnects right away. Scan the code again to pair.")
 
+    private func groupTitle(_ kind: DeviceGroupKind) -> String {
+        switch kind {
+        case .devices: String(localized: "Devices")
+        case .browsers: String(localized: "Browsers")
+        case .links: String(localized: "Computers")
+        case .integrations: String(localized: "Integrations")
+        }
+    }
+
+    private func icon(for t: APIClient.DeviceToken) -> String {
+        switch t.kind {
+        case "watch": Theme.Icon.watch
+        case "phone": Theme.Icon.phone
+        case "web": Theme.Icon.web
+        case "link": Theme.Icon.laptop
+        default: Theme.Icon.credentials
+        }
+    }
+
     private func row(_ t: APIClient.DeviceToken) -> some View {
         HStack(spacing: Theme.Space.m) {
-            ThemedIcon(t.kind == "watch" ? Theme.Icon.watch : t.kind == "phone" ? Theme.Icon.phone : Theme.Icon.laptop)
+            ThemedIcon(icon(for: t))
                 .scaledFrame(width: Theme.Size.icon)
                 .foregroundStyle(Theme.accent)
             VStack(alignment: .leading, spacing: Theme.Space.xxs) {
@@ -353,7 +436,11 @@ struct DevicesView: View {
                     Text(t.name).lineLimit(1)
                 } chips: {
                     if t.id == current { Chip(text: String(localized: "This Device"), look: .outline) }
+                    if t.revokedAt == nil, t.id != current, online.contains(t.id) {
+                        Chip(text: String(localized: "Online"), look: .tint(Theme.positive))
+                    }
                     if t.role == "answer" { Chip(text: String(localized: "Answer Only")) }
+                    if t.role == "scoped" { Chip(text: String(localized: "Scoped Access")) }
                 }
                 Text(detail(t)).font(Theme.Font.label).foregroundStyle(.secondary).lineLimit(1)
                 if t.revokedAt == nil, let route = push[t.id] { DevicePushLine(route: route) }
@@ -411,7 +498,9 @@ struct DevicesView: View {
         guard let api = model.api else { return }
         do {
             let r = try await api.deviceTokens()
-            (tokens, current, push) = (r.tokens, r.current, r.push ?? [:])
+            let onlineSet = Set(r.online ?? [])
+            let grouped = DeviceGroups.group(tokens: r.tokens, current: r.current, online: onlineSet)
+            (tokens, current, online, push, groups, revoked) = (r.tokens, r.current, onlineSet, r.push ?? [:], grouped.sections, grouped.revoked)
             apply(phone: savingPhone ? phone : r.phone) // a save on its way answers for itself
         } catch {
             model.show(error)
