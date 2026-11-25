@@ -53,7 +53,8 @@ function windowBackground(surface: "hub" | "setup" = "hub"): string {
     // Match --page in setup.css until the local renderer paints.
     return nativeTheme.shouldUseDarkColors ? "#0b0b0c" : "#f1f1f4";
   }
-  return nativeTheme.shouldUseDarkColors ? "#111113" : "#f7f7f9";
+  // Match the Web shell canvas and its prepaint background.
+  return nativeTheme.shouldUseDarkColors ? "#0b0b0c" : "#f1f1f4";
 }
 // Each hub window's routes wait until its page listens (page-routes.ts, #10282): no route is sent around them.
 const pageRoutes = new WeakMap<BrowserWindow, PageRoutes>();
