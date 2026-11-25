@@ -22,6 +22,8 @@
   [data-sidebar-column] {
     flex-shrink: 0;
     border-right: 0;
+    /* Let the resize handle stack above the adjoining main border. */
+    translate: none;
   }
 
   [data-app-shell] > main,
