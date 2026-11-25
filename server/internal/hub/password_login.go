@@ -29,11 +29,11 @@ type passwordStore interface {
 }
 
 type passwordFlow struct {
-	until                           time.Time
-	registration                    *db.ClientPassword
-	admin, previous                 string
-	mac                             []byte
-	revision, name, kind, challenge string
+	until                                     time.Time
+	registration                              *db.ClientPassword
+	admin, previous                           string
+	mac                                       []byte
+	revision, name, kind, challenge, replaces string
 }
 
 type passwordLoginState struct {
@@ -147,8 +147,14 @@ func (h *Hub) passwordLoginRoutes(mux *http.ServeMux) {
 			Name      string `json:"name"`
 			Kind      string `json:"kind"`
 			Challenge string `json:"challenge"`
+			Replaces  string `json:"replaces,omitempty"`
 		}
 		if !passwordJSON(w, r, &in) {
+			return
+		}
+		in.Replaces = strings.TrimSpace(in.Replaces)
+		if len(in.Replaces) > 64 {
+			writeErrCode(w, 400, "bad_request", i18n.Err("hub-password_login.invalid_request"))
 			return
 		}
 		if in.Challenge != "" && !pkceChallenge.MatchString(in.Challenge) {
@@ -198,7 +204,7 @@ func (h *Hub) passwordLoginRoutes(mux *http.ServeMux) {
 			passwordInvalid(w)
 			return
 		}
-		id, ok := h.passwordLogin.put(passwordFlow{mac: output.ClientMAC, revision: p.Revision, name: in.Name, kind: in.Kind, challenge: in.Challenge})
+		id, ok := h.passwordLogin.put(passwordFlow{mac: output.ClientMAC, revision: p.Revision, name: in.Name, kind: in.Kind, challenge: in.Challenge, replaces: in.Replaces})
 		if !ok {
 			writeErrCode(w, 503, "busy", i18n.Err("hub-password_login.busy"))
 			return
@@ -307,8 +313,13 @@ func (h *Hub) issuePasswordDevice(w http.ResponseWriter, r *http.Request, f pass
 		passwordInvalid(w)
 		return
 	}
+	replaced := h.replaceDeviceToken(r.Context(), d.ID, kind, f.replaces)
 	h.notifyPairing(d.Name, d.ID)
-	writeJSON(w, map[string]any{"token": token, "id": d.ID, "hub_id": h.hubID(), "name": d.Name})
+	resp := map[string]any{"token": token, "id": d.ID, "hub_id": h.hubID(), "name": d.Name}
+	if replaced != "" {
+		resp["replaced"] = replaced
+	}
+	writeJSON(w, resp)
 }
 
 func (h *Hub) adminPasswordLoginRoutes(mux *http.ServeMux) {

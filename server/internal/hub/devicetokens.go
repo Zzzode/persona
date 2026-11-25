@@ -462,19 +462,9 @@ func (h *Hub) tokenRoutes(api *http.ServeMux) {
 			return
 		}
 		h.logf("device token %s for %q (%s, %s)", dt.ID, name, kind, role)
-		replaced := ""
-		if old := strings.TrimSpace(req.Replaces); kind == "web" && old != "" && old != dt.ID {
-			// Only a web credential: an id a browser kept cannot take a phone, a watch or a computer's link off.
-			if ok, err := h.revokeWebToken(r.Context(), old); err != nil {
-				h.logf("device token %s: replacing %s: %v", dt.ID, old, err)
-			} else if ok {
-				replaced = old
-				h.revoked(old)
-				h.sendRevocations(newlyReachable(nil, h.meshView()))
-				h.logf("device token %s replaces %s", dt.ID, old)
-			}
-		}
+		replaced := h.replaceDeviceToken(r.Context(), dt.ID, kind, req.Replaces)
 		if kind == "link" {
+			h.revokeOtherLinkTokens(r.Context(), machine, dt.ID)
 			h.machineAudit(r.Context(), machine, "redeem", dt.ID, nil)
 			h.nameAfterSystem(r.Context(), machine, req.SystemName)
 		}
@@ -502,9 +492,10 @@ func (h *Hub) tokenRoutes(api *http.ServeMux) {
 			}
 		}
 		// push: per token, the way pushes reach the device it registered (Settings › Devices, #5998); phone: the primary
-		// device for phone calls and the devices that can be it (phone_primary.go)
+		// device for phone calls and the devices that can be it (phone_primary.go); online: credentials with a live
+		// WebSocket or Persona Link right now (#15634).
 		writeJSON(w, map[string]any{"tokens": list, "current": principalOf(r.Context()).ID, "push": h.push.routesByCredential(),
-			"phone": h.phonePrimaryView(list)})
+			"phone": h.phonePrimaryView(list), "online": h.onlineCredentials()})
 	})
 	api.HandleFunc("DELETE /api/v1/auth/tokens/{id}", func(w http.ResponseWriter, r *http.Request) {
 		if h.store == nil {
@@ -527,17 +518,96 @@ func (h *Hub) tokenRoutes(api *http.ServeMux) {
 	})
 }
 
-// revokeWebToken revokes a live credential only when a browser made it (kind "web"), and says whether it did.
-func (h *Hub) revokeWebToken(ctx context.Context, id string) (bool, error) {
+func replaceableKind(kind string) bool {
+	return kind == "web" || kind == "phone" || kind == "watch"
+}
+
+// revokeSameKindToken revokes a live credential only when it has the same replaceable kind (web, phone or watch), so a
+// client signing in again can retire its earlier credential without touching another kind or a computer's link.
+func (h *Hub) revokeSameKindToken(ctx context.Context, id, kind string) (bool, error) {
+	if !replaceableKind(kind) {
+		return false, nil
+	}
 	list, err := h.store.DeviceTokens(ctx)
 	if err != nil {
 		return false, err
 	}
 	i := slices.IndexFunc(list, func(t db.DeviceToken) bool { return t.ID == id })
-	if i < 0 || list[i].Kind != "web" || list[i].RevokedAt != nil {
+	if i < 0 || list[i].Kind != kind || list[i].RevokedAt != nil {
 		return false, nil
 	}
 	return h.store.RevokeDeviceToken(ctx, id)
+}
+
+func (h *Hub) replaceDeviceToken(ctx context.Context, newID, kind, rawOld string) string {
+	old := strings.TrimSpace(rawOld)
+	if !replaceableKind(kind) || old == "" || old == newID {
+		return ""
+	}
+	if ok, err := h.revokeSameKindToken(ctx, old, kind); err != nil {
+		h.logf("device token %s: replacing %s: %v", newID, old, err)
+		return ""
+	} else if ok {
+		h.revoked(old)
+		h.sendRevocations(newlyReachable(nil, h.meshView()))
+		h.logf("device token %s replaces %s", newID, old)
+		return old
+	}
+	return ""
+}
+
+// revokeOtherLinkTokens revokes earlier live Persona Link credentials bound to the same machine_id so re-pairing a
+// computer does not leave stale link rows behind (#15634).
+func (h *Hub) revokeOtherLinkTokens(ctx context.Context, machine, keepID string) {
+	if machine == "" || h.store == nil {
+		return
+	}
+	list, err := h.store.DeviceTokens(ctx)
+	if err != nil {
+		h.logf("device token %s: listing link tokens for %s: %v", keepID, machine, err)
+		return
+	}
+	revokedAny := false
+	for _, t := range list {
+		if t.Kind != "link" || t.MachineID != machine || t.ID == keepID || t.RevokedAt != nil {
+			continue
+		}
+		if ok, err := h.store.RevokeDeviceToken(ctx, t.ID); err != nil {
+			h.logf("device token %s: revoking superseded link %s: %v", keepID, t.ID, err)
+		} else if ok {
+			h.revoked(t.ID)
+			revokedAny = true
+			h.logf("device token %s replaces link %s for machine %s", keepID, t.ID, machine)
+		}
+	}
+	if revokedAny {
+		h.sendRevocations(newlyReachable(nil, h.meshView()))
+	}
+}
+
+// onlineCredentials returns the sorted distinct credential IDs with an active client WebSocket or Persona Link.
+func (h *Hub) onlineCredentials() []string {
+	seen := map[string]struct{}{}
+	h.mu.Lock()
+	for c := range h.clients {
+		if c.device != "" {
+			seen[c.device] = struct{}{}
+		}
+	}
+	h.mu.Unlock()
+	h.relay.mu.Lock()
+	for l := range h.relay.links {
+		if l.tokenID != "" {
+			seen[l.tokenID] = struct{}{}
+		}
+	}
+	h.relay.mu.Unlock()
+	out := make([]string, 0, len(seen))
+	for id := range seen {
+		out = append(out, id)
+	}
+	slices.Sort(out)
+	return out
 }
 
 // forgetUnknownTokens drops the cached "no such token" answers for these token hashes, once the tokens exist here.
