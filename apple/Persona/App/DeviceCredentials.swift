@@ -267,8 +267,9 @@ nonisolated enum DeviceGroups {
             }
         }
         let byActivity: (APIClient.DeviceToken, APIClient.DeviceToken) -> Bool = { a, b in
-            if a.id == current { return true }
-            if b.id == current { return false }
+            if a.id == b.id { return false }
+            let aCur = a.id == current, bCur = b.id == current
+            if aCur != bCur { return aCur }
             let aOn = online.contains(a.id), bOn = online.contains(b.id)
             if aOn != bOn { return aOn }
             let ta = a.lastSeen ?? a.createdAt ?? .distantPast

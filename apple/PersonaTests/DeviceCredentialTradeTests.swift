@@ -161,5 +161,13 @@ struct DeviceCredentialTradeTests {
         #expect(withOnline.online == ["c", "l"])
         let withoutOnline = try JSON.decoder.decode(APIClient.DeviceTokens.self, from: Data(#"{"tokens":[],"current":"c"}"#.utf8))
         #expect(withoutOnline.online == nil)
+
+        let duplicateCurrent = [
+            APIClient.DeviceToken(id: "phone-old", name: "Old Phone", kind: "phone", role: "full", createdAt: older, lastSeen: older),
+            APIClient.DeviceToken(id: "phone-me", name: "This Phone", kind: "phone", role: "full", createdAt: older, lastSeen: older),
+            APIClient.DeviceToken(id: "phone-me", name: "This Phone", kind: "phone", role: "full", createdAt: older, lastSeen: older),
+        ]
+        let dupGrouped = DeviceGroups.group(tokens: duplicateCurrent, current: "phone-me", online: [])
+        #expect(dupGrouped.sections.first?.tokens.map(\.id) == ["phone-me", "phone-me", "phone-old"])
     }
 }
