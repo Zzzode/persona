@@ -73,6 +73,19 @@ extension AppModel {
         let missed = await Self.signOut(hubs) { hub in
             APIClient(config: DeviceCredentialTrade.current(hub.config, traded: traded), group: hub.group)
         }
+        let missedIDs = Set(missed.map(\.id))
+        let signOutTargets = hubs.filter { !$0.config.isDemo }
+        await Task.detached {
+            for h in signOutTargets {
+                if missedIDs.contains(h.id) {
+                    if let d = h.deviceID { PreviousDeviceCredentials.record(d, slot: .device, hubID: h.hubID, url: h.config.url) }
+                    if let w = h.watchDeviceID { PreviousDeviceCredentials.record(w, slot: .watch, hubID: h.hubID, url: h.config.url) }
+                } else {
+                    PreviousDeviceCredentials.clear(.device, hubID: h.hubID, url: h.config.url)
+                    PreviousDeviceCredentials.clear(.watch, hubID: h.hubID, url: h.config.url)
+                }
+            }
+        }.value
         forget(self)
         guard !missed.isEmpty else { return }
         let names = ListFormatter.localizedString(byJoining: missed.map(\.displayName))

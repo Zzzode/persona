@@ -1,4 +1,5 @@
 import CryptoKit
+import PersonaWire
 import SwiftUI
 #if canImport(WatchConnectivity)
 import WatchConnectivity
@@ -42,17 +43,24 @@ extension AppModel {
         #endif
         for paired in registry.hubs where paired.deviceID == nil {
             let old = paired.config
-            guard let t = try? await APIClient(config: old).createToken(name: UIDevice.current.name, kind: Self.credentialKind), t.role == "full" else { continue }
+            let hubID = paired.hubID
+            let replaces = await Task.detached { PreviousDeviceCredentials.lookup(.device, hubID: hubID, url: old.url) }.value
+            guard let t = try? await APIClient(config: old).createToken(name: UIDevice.current.name, kind: Self.credentialKind, replaces: replaces), t.role == "full" else { continue }
             adoptDeviceToken(hub: paired.id, old: old.token, token: t.token, deviceID: t.id)
         }
         #if canImport(WatchConnectivity)
         if WatchSync.shared.watchAppInstalled {
             for g in registry.groups {
-                guard let primary = registry.primary(g),
-                      let t = try? await DeviceCredentialTrade.issueWatchToken(for: primary, api: APIClient(config: primary.config)),
+                guard let primary = registry.primary(g) else { continue }
+                let hubID = primary.hubID
+                let url = primary.config.url
+                let priorWatch = await Task.detached { PreviousDeviceCredentials.lookup(.watch, hubID: hubID, url: url) }.value
+                guard let t = try? await DeviceCredentialTrade.issueWatchToken(for: primary, api: APIClient(config: primary.config), replaces: priorWatch),
                       let updated = DeviceCredentialTrade.watchRegistry(registry, expected: primary, token: t) else { continue }
                 registry = updated
                 saveRegistry(updated)
+                let newWatchID = t.id
+                Task.detached { PreviousDeviceCredentials.record(newWatchID, slot: .watch, hubID: hubID, url: url) }
             }
         }
         #endif
@@ -71,6 +79,11 @@ extension AppModel {
             registry = r
             saveRegistry(r)
             buildLinks()
+            if let paired = r.hubs.first(where: { $0.id == id }) {
+                let hubID = paired.hubID
+                let url = paired.config.url
+                Task.detached { PreviousDeviceCredentials.record(deviceID, slot: .device, hubID: hubID, url: url) }
+            }
         }
         for link in links where !link.isDemo { link.live.renewCredential(from: old, to: token) }
     }
@@ -90,13 +103,73 @@ extension AppModel {
     }
 }
 
+/// Device-local memory of the last credential ID this device (and its paired watch) held at each hub.
+/// Stored in Keychain with `thisDeviceOnly` so re-pairing after an offline sign-out, reinstall, or in-place
+/// re-pair sends `replaces` and avoids leaving duplicate entries in Settings › Devices.
+nonisolated enum PreviousDeviceCredentials {
+    enum Slot: String, Sendable { case device, watch }
+
+    private static let account = "previous-device-ids"
+    static let defaultKeychain = KeychainAccess(
+        read: { Keychain.read(account: $0) },
+        write: { Keychain.save($0, account: $1, thisDeviceOnly: true) },
+        delete: { Keychain.delete(account: $0) }
+    )
+
+    static func keys(_ slot: Slot, hubID: String?, url: URL) -> [String] {
+        var out: [String] = []
+        if let hubID, !hubID.isEmpty { out.append("\(slot.rawValue):hub:\(hubID)") }
+        if let urlKey = HubAddressInput.key(url) { out.append("\(slot.rawValue):url:\(urlKey)") }
+        return out
+    }
+
+    static func lookup(_ slot: Slot, hubID: String?, url: URL, _ kc: KeychainAccess = defaultKeychain) -> String? {
+        let map = load(kc)
+        for key in keys(slot, hubID: hubID, url: url) {
+            if let id = map[key], !id.isEmpty { return id }
+        }
+        return nil
+    }
+
+    static func record(_ id: String, slot: Slot, hubID: String?, url: URL, _ kc: KeychainAccess = defaultKeychain) {
+        guard !id.isEmpty else { return }
+        let ks = keys(slot, hubID: hubID, url: url)
+        guard !ks.isEmpty else { return }
+        var map = load(kc)
+        for key in ks { map[key] = id }
+        save(map, kc)
+    }
+
+    static func clear(_ slot: Slot, hubID: String?, url: URL, _ kc: KeychainAccess = defaultKeychain) {
+        let ks = keys(slot, hubID: hubID, url: url)
+        guard !ks.isEmpty else { return }
+        var map = load(kc)
+        var changed = false
+        for key in ks where map.removeValue(forKey: key) != nil { changed = true }
+        if changed { save(map, kc) }
+    }
+
+    private static func load(_ kc: KeychainAccess) -> [String: String] {
+        guard case .found(let data) = kc.read(account),
+              let decoded = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
+        return decoded
+    }
+
+    private static func save(_ map: [String: String], _ kc: KeychainAccess) {
+        if map.isEmpty { kc.delete(account); return }
+        guard let data = try? JSONEncoder().encode(map) else { return }
+        _ = kc.write(data, account)
+    }
+}
+
 /// Trading a pairing token for the device's own (pure, for the tests).
 nonisolated enum DeviceCredentialTrade {
     /// Token listings expose ids, not hashes: a legacy watch token cannot safely be matched by name.
-    /// Issue an answer-only replacement; never revoke an unidentified old token or a raced new token.
-    static func issueWatchToken(for primary: PairedHub, api: APIClient) async throws -> APIClient.NewToken? {
+    /// Issue an answer-only replacement; when a prior watch credential ID is known, pass it in `replaces`.
+    static func issueWatchToken(for primary: PairedHub, api: APIClient, replaces: String? = nil) async throws -> APIClient.NewToken? {
         guard primary.watch?.url != primary.config.url || primary.watchDeviceID == nil else { return nil }
-        let token = try await api.createToken(name: "Apple Watch", kind: "watch")
+        let prior = primary.watchDeviceID ?? replaces
+        let token = try await api.createToken(name: "Apple Watch", kind: "watch", replaces: prior)
         guard token.role == "answer", !token.id.isEmpty, !token.token.isEmpty else { throw URLError(.cannotParseResponse) }
         return token
     }

@@ -1,4 +1,5 @@
 import Foundation
+import PersonaWire
 import Testing
 @testable import Persona
 
@@ -94,5 +95,44 @@ struct DeviceCredentialTradeTests {
         #expect(ConnectionStatus.refined(.connecting, rejected: []) == .connecting)
         #expect(ConnectionStatus.refined(.waitingForNetwork, rejected: [true]) == .waitingForNetwork)
         #expect(ConnectionStatus.refined(.online, rejected: [true]) == .online)
+    }
+
+    @Test func previousDeviceCredentialsLookupAndClearWorkByHubIDAndURL() {
+        final class MemoryKeychain: @unchecked Sendable {
+            private let lock = NSLock()
+            private var items: [String: Data] = [:]
+            var access: KeychainAccess {
+                KeychainAccess(
+                    read: { [self] account in lock.withLock { items[account].map { .found($0) } ?? .missing } },
+                    write: { [self] data, account in lock.withLock { items[account] = data; return true } },
+                    delete: { [self] account in lock.withLock { items.removeValue(forKey: account) } }
+                )
+            }
+        }
+        let kc = MemoryKeychain().access
+        let url = URL(string: "https://hub.example.com:8443/")!
+        let sameURL = URL(string: "https://HUB.EXAMPLE.COM:8443")!
+        let otherURL = URL(string: "https://other.example.com")!
+
+        PreviousDeviceCredentials.record("dev_phone_1", slot: .device, hubID: "hub-1", url: url, kc)
+        PreviousDeviceCredentials.record("dev_watch_1", slot: .watch, hubID: "hub-1", url: url, kc)
+        #expect(PreviousDeviceCredentials.lookup(.device, hubID: "hub-1", url: otherURL, kc) == "dev_phone_1")
+        #expect(PreviousDeviceCredentials.lookup(.device, hubID: nil, url: sameURL, kc) == "dev_phone_1")
+        #expect(PreviousDeviceCredentials.lookup(.watch, hubID: "hub-1", url: otherURL, kc) == "dev_watch_1")
+
+        PreviousDeviceCredentials.clear(.device, hubID: "hub-1", url: sameURL, kc)
+        #expect(PreviousDeviceCredentials.lookup(.device, hubID: "hub-1", url: url, kc) == nil)
+        #expect(PreviousDeviceCredentials.lookup(.watch, hubID: "hub-1", url: url, kc) == "dev_watch_1")
+    }
+
+    @Test func createTokenSendsReplacesOnlyWhenProvided() async throws {
+        let hub = FakeHub()
+        hub.on("POST", "/api/v1/auth/tokens", json: #"{"id":"dev_new","token":"jd_new","role":"full"}"#)
+        _ = try await hub.client.createToken(name: "My iPhone", kind: "phone", replaces: "dev_old")
+        _ = try await hub.client.createToken(name: "My iPhone", kind: "phone")
+        let bodies = hub.sent("POST", "/api/v1/auth/tokens").compactMap { $0.body }
+        #expect(bodies.count == 2)
+        #expect(try JSON.decoder.decode(JSONValue.self, from: bodies[0])["replaces"] == .string("dev_old"))
+        #expect(try JSON.decoder.decode(JSONValue.self, from: bodies[1])["replaces"] == nil)
     }
 }

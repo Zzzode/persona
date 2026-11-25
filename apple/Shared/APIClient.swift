@@ -1383,8 +1383,11 @@ nonisolated struct APIClient: Sendable {
     }
 
     /// Trades this credential for a device's own (kind "watch": answer-only).
-    func createToken(name: String, kind: String) async throws -> NewToken {
-        try JSON.decoder.decode(NewToken.self, from: try await request("POST", "/api/v1/auth/tokens", body: ["name": name, "kind": kind]))
+    /// When `replaces` names an earlier credential of the same kind, the hub revokes it alongside the exchange.
+    func createToken(name: String, kind: String, replaces: String? = nil) async throws -> NewToken {
+        var body = ["name": name, "kind": kind]
+        if let replaces, !replaces.isEmpty { body["replaces"] = replaces }
+        return try JSON.decoder.decode(NewToken.self, from: try await request("POST", "/api/v1/auth/tokens", body: body))
     }
     func deviceTokens(timeout: TimeInterval = 30) async throws -> DeviceTokens {
         try JSON.decoder.decode(DeviceTokens.self, from: try await request("GET", "/api/v1/auth/tokens", timeout: timeout))
