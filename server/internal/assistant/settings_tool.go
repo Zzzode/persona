@@ -503,17 +503,23 @@ func (s *Service) allOwnSettings() []ownSetting {
 		{Setting: Setting{Key: todosV2PendingReviewSLASettingKey, Title: "Pending review quiet SLA hours (todos_v2)", Actions: getSet,
 			About: "how many hours pending_review tasks stay quiet in Working under todos_v2=true before escalating to Needs you: 0 (off, immediate Needs you), 12, 24 (default), or 48; no effect when todos_v2 is off",
 			Value: "0, 12, 24 or 48"},
-			get: func(ctx context.Context) (string, error) { return fmt.Sprint(s.settings(ctx).todosV2PendingReviewSLAHours()), nil },
+			get: func(ctx context.Context) (string, error) {
+				return fmt.Sprint(s.settings(ctx).todosV2PendingReviewSLAHours()), nil
+			},
 			set: s.setTodosV2PendingReviewSLAHours},
 		{Setting: Setting{Key: todosV2CanWaitSLASettingKey, Title: "Can-wait decision aging SLA hours (todos_v2)", Actions: getSet,
 			About: "how many hours non-critical can_wait decisions wait under todos_v2=true before aging into Needs you: 0 (off, never auto-escalate), 24, 48 (default), or 72; no effect when todos_v2 is off",
 			Value: "0, 24, 48 or 72"},
-			get: func(ctx context.Context) (string, error) { return fmt.Sprint(s.settings(ctx).todosV2CanWaitSLAHours()), nil },
+			get: func(ctx context.Context) (string, error) {
+				return fmt.Sprint(s.settings(ctx).todosV2CanWaitSLAHours()), nil
+			},
 			set: s.setTodosV2CanWaitSLAHours},
 		{Setting: Setting{Key: todosV2FoldChildrenSettingKey, Title: "Fold child tasks under parent goals (todos_v2)", Actions: getSet,
 			About: "on (default): non-urgent child tasks fold under their top-level parent goal in todos_v2 board projection; off: show child tasks flat; no effect when todos_v2 is off",
 			Value: "true or false"},
-			get: func(ctx context.Context) (string, error) { return fmt.Sprint(s.settings(ctx).todosV2FoldChildrenOn()), nil },
+			get: func(ctx context.Context) (string, error) {
+				return fmt.Sprint(s.settings(ctx).todosV2FoldChildrenOn()), nil
+			},
 			set: s.setTodosV2FoldChildren},
 		s.trustSetting(),
 		s.urgentRulesSetting(), // urgent_call_rules.go
