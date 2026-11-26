@@ -1161,12 +1161,6 @@ func (s *Service) runPlanTaskStart(planID, conversation string, i int, t PlanTas
 		failed.ErrorCode, failed.ErrorArgs = code, args
 		retryWith = s.retryLaunchers(ctx, m, failed, err)
 	}
-	if ferr := s.failTodo(ctx, t.TodoID, reason); ferr != nil {
-		s.logf("task %s: fail: %v", t.TodoID, ferr)
-	}
-	if t.HandoffID != "" {
-		_, _ = s.recordTodoHandoffDelivery(ctx, t.HandoffID, t.Machine, "", "", handoffDeliveryRejected, err.Error())
-	}
 	if perr := s.patchPlanTask(ctx, planID, i, func(pt *PlanTask) {
 		pt.Error = err.Error()
 		var problem *taskworkspace.Problem
@@ -1181,6 +1175,12 @@ func (s *Service) runPlanTaskStart(planID, conversation string, i int, t PlanTas
 		}
 	}); perr != nil {
 		s.logf("plan %s: task %d's start error: %v", planID, i, perr)
+	}
+	if ferr := s.failTodo(ctx, t.TodoID, reason); ferr != nil {
+		s.logf("task %s: fail: %v", t.TodoID, ferr)
+	}
+	if t.HandoffID != "" {
+		_, _ = s.recordTodoHandoffDelivery(ctx, t.HandoffID, t.Machine, "", "", handoffDeliveryRejected, err.Error())
 	}
 	s.tasks.mu.Lock()
 	s.tasks.receipted[t.TodoID] = time.Now()
