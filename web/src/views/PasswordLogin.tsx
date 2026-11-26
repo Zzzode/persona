@@ -11,6 +11,7 @@ import { Icon } from "../ui/icons";
 export function PasswordLogin({ onDone, error: linkError = "", native = null }: { onDone: () => void; error?: string; native?: NativeLogin | null }) {
   const [token, setTok] = useState("");
   const [passwordEnabled, setPasswordEnabled] = useState(false);
+  const [supportsReplaces, setSupportsReplaces] = useState(false);
   const [mode, setMode] = useState<"password" | "token">("password");
   const [loading, setLoading] = useState(true);
   useEffect(() => {
@@ -18,6 +19,7 @@ export function PasswordLogin({ onDone, error: linkError = "", native = null }: 
     passwordApi<PasswordState>("/state").then((state) => {
       if (!live) return;
       setPasswordEnabled(state.enabled);
+      setSupportsReplaces(Boolean(state.replaces));
       if (!state.enabled) {
         setMode("token");
         if (native) setError(t("password.disabled"));
@@ -39,7 +41,7 @@ export function PasswordLogin({ onDone, error: linkError = "", native = null }: 
     setError("");
     try {
       if (mode === "password") {
-        const pending = loginWithPassword(credential, native);
+        const pending = loginWithPassword(credential, native, { replaces: supportsReplaces });
         setTok("");
         const result = await pending;
         if (native) {

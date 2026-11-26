@@ -136,7 +136,7 @@ func (h *Hub) passwordLoginRoutes(mux *http.ServeMux) {
 			writeErr(w, 503, err)
 			return
 		}
-		writeJSON(w, map[string]any{"enabled": p != nil && p.Enabled, "suite": passwordpake.Suite, "hub_id": h.hubID(), "hub_name": h.hubName()})
+		writeJSON(w, map[string]any{"enabled": p != nil && p.Enabled, "suite": passwordpake.Suite, "hub_id": h.hubID(), "hub_name": h.hubName(), "replaces": true})
 	})
 	open.HandleFunc("POST /api/v1/auth/password/start", func(w http.ResponseWriter, r *http.Request) {
 		if h.passwordLimited(w, r, true) {
@@ -153,10 +153,6 @@ func (h *Hub) passwordLoginRoutes(mux *http.ServeMux) {
 			return
 		}
 		in.Replaces = strings.TrimSpace(in.Replaces)
-		if len(in.Replaces) > 64 {
-			writeErrCode(w, 400, "bad_request", i18n.Err("hub-password_login.invalid_request"))
-			return
-		}
 		if in.Challenge != "" && !pkceChallenge.MatchString(in.Challenge) {
 			writeErrCode(w, 400, "bad_request", i18n.Err("hub-password_login.invalid_authorization"))
 			return

@@ -125,6 +125,56 @@ struct DeviceCredentialTradeTests {
         #expect(PreviousDeviceCredentials.lookup(.watch, hubID: "hub-1", url: url, kc) == "dev_watch_1")
     }
 
+    @Test func previousDeviceCredentialsSerializesConcurrentUpdates() async {
+        final class SerializedMemoryKeychain: @unchecked Sendable {
+            private let lock = NSLock()
+            private var items: [String: Data] = [:]
+            private var active = 0
+            private(set) var maxOverlap = 0
+            var access: KeychainAccess {
+                KeychainAccess(
+                    read: { [self] account in
+                        lock.withLock {
+                            active += 1
+                            maxOverlap = max(maxOverlap, active)
+                            return items[account].map { .found($0) } ?? .missing
+                        }
+                    },
+                    write: { [self] data, account in
+                        lock.withLock {
+                            items[account] = data
+                            active -= 1
+                        }
+                        return true
+                    },
+                    delete: { [self] account in
+                        lock.withLock {
+                            items[account] = nil
+                            active -= 1
+                        }
+                    }
+                )
+            }
+        }
+        let store = SerializedMemoryKeychain()
+        let kc = store.access
+        await withTaskGroup(of: Void.self) { group in
+            for i in 0..<20 {
+                let slot: PreviousDeviceCredentials.Slot = i.isMultiple(of: 2) ? .device : .watch
+                let url = URL(string: "https://hub-\(i).example.com:8443")!
+                group.addTask {
+                    PreviousDeviceCredentials.record("cred_\(i)", slot: slot, hubID: "hub-\(i)", url: url, kc)
+                }
+            }
+        }
+        #expect(store.maxOverlap == 1)
+        for i in 0..<20 {
+            let slot: PreviousDeviceCredentials.Slot = i.isMultiple(of: 2) ? .device : .watch
+            let url = URL(string: "https://hub-\(i).example.com:8443")!
+            #expect(PreviousDeviceCredentials.lookup(slot, hubID: "hub-\(i)", url: url, kc) == "cred_\(i)")
+        }
+    }
+
     @Test func createTokenSendsReplacesOnlyWhenProvided() async throws {
         let hub = FakeHub()
         hub.on("POST", "/api/v1/auth/tokens", json: #"{"id":"dev_new","token":"jd_new","role":"full"}"#)
@@ -134,6 +184,48 @@ struct DeviceCredentialTradeTests {
         #expect(bodies.count == 2)
         #expect(try JSON.decoder.decode(JSONValue.self, from: bodies[0])["replaces"] == .string("dev_old"))
         #expect(try JSON.decoder.decode(JSONValue.self, from: bodies[1])["replaces"] == nil)
+    }
+
+    @Test func createTokenRetriesOnceWithoutReplacesOn400ForDeviceAndWatch() async throws {
+        let hub = FakeHub()
+        let attempts = Box(0)
+        hub.on("POST", "/api/v1/auth/tokens") { req in
+            attempts.value += 1
+            let body = try JSON.decoder.decode(JSONValue.self, from: req.body ?? Data())
+            if body["replaces"] != nil {
+                throw APIError(status: 400, message: "unknown field replaces")
+            }
+            if body["kind"] == .string("watch") {
+                return Data(#"{"id":"watch_new","token":"jd_watch_new","role":"answer"}"#.utf8)
+            }
+            return Data(#"{"id":"dev_new","token":"jd_new","role":"full"}"#.utf8)
+        }
+
+        let deviceToken = try await hub.client.createToken(name: "My iPhone", kind: "phone", replaces: "dev_old")
+        #expect(deviceToken.id == "dev_new")
+
+        let primary = PairedHub(id: "hub-1", config: ServerConfig(url: hub.url, token: "jp_pair"))
+        let watchToken = try #require(try await DeviceCredentialTrade.issueWatchToken(for: primary, api: hub.client, replaces: "watch_old"))
+        #expect(watchToken.id == "watch_new")
+        #expect(attempts.value == 4)
+
+        let bodies = try hub.sent("POST", "/api/v1/auth/tokens").compactMap(\.body).map {
+            try JSON.decoder.decode(JSONValue.self, from: $0)
+        }
+        #expect(bodies[0]["replaces"] == .string("dev_old"))
+        #expect(bodies[1]["replaces"] == nil)
+        #expect(bodies[2]["replaces"] == .string("watch_old"))
+        #expect(bodies[3]["replaces"] == nil)
+
+        hub.on("POST", "/api/v1/auth/tokens") { _ in
+            throw APIError(status: 400, message: "bad request")
+        }
+        do {
+            _ = try await hub.client.createToken(name: "My iPhone", kind: "phone", replaces: "dev_old")
+            Issue.record("Repeated 400 should propagate")
+        } catch let error as APIError {
+            #expect(error.status == 400)
+        }
     }
 
     @Test func deviceGroupsSplitAndSortByCurrentOnlineAndRecent() throws {

@@ -110,6 +110,7 @@ nonisolated enum PreviousDeviceCredentials {
     enum Slot: String, Sendable { case device, watch }
 
     private static let account = "previous-device-ids"
+    private static let lock = NSLock()
     static let defaultKeychain = KeychainAccess(
         read: { Keychain.read(account: $0) },
         write: { Keychain.save($0, account: $1, thisDeviceOnly: true) },
@@ -124,29 +125,37 @@ nonisolated enum PreviousDeviceCredentials {
     }
 
     static func lookup(_ slot: Slot, hubID: String?, url: URL, _ kc: KeychainAccess = defaultKeychain) -> String? {
-        let map = load(kc)
-        for key in keys(slot, hubID: hubID, url: url) {
-            if let id = map[key], !id.isEmpty { return id }
+        let ks = keys(slot, hubID: hubID, url: url)
+        guard !ks.isEmpty else { return nil }
+        return lock.withLock {
+            let map = load(kc)
+            for key in ks {
+                if let id = map[key], !id.isEmpty { return id }
+            }
+            return nil
         }
-        return nil
     }
 
     static func record(_ id: String, slot: Slot, hubID: String?, url: URL, _ kc: KeychainAccess = defaultKeychain) {
         guard !id.isEmpty else { return }
         let ks = keys(slot, hubID: hubID, url: url)
         guard !ks.isEmpty else { return }
-        var map = load(kc)
-        for key in ks { map[key] = id }
-        save(map, kc)
+        lock.withLock {
+            var map = load(kc)
+            for key in ks { map[key] = id }
+            save(map, kc)
+        }
     }
 
     static func clear(_ slot: Slot, hubID: String?, url: URL, _ kc: KeychainAccess = defaultKeychain) {
         let ks = keys(slot, hubID: hubID, url: url)
         guard !ks.isEmpty else { return }
-        var map = load(kc)
-        var changed = false
-        for key in ks where map.removeValue(forKey: key) != nil { changed = true }
-        if changed { save(map, kc) }
+        lock.withLock {
+            var map = load(kc)
+            var changed = false
+            for key in ks where map.removeValue(forKey: key) != nil { changed = true }
+            if changed { save(map, kc) }
+        }
     }
 
     private static func load(_ kc: KeychainAccess) -> [String: String] {

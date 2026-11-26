@@ -194,7 +194,7 @@ func TestPasswordLoginRegistrationAndDevice(t *testing.T) {
 		t.Fatal("password persisted")
 	}
 	state := passwordCall(t, client, "GET", "/api/v1/auth/password/state", nil, 200)
-	if state["enabled"] != true || state["suite"] != passwordpake.Suite {
+	if state["enabled"] != true || state["suite"] != passwordpake.Suite || state["replaces"] != true {
 		t.Fatal(state)
 	}
 	session, proof, err := passwordProof(t, client, password, "")
@@ -409,5 +409,11 @@ func TestPasswordLoginReplacesSameKindToken(t *testing.T) {
 	}
 	if _, ok := h.authenticate(context.Background(), firstPhone["token"].(string)); !ok {
 		t.Fatal("phone token should remain valid")
+	}
+
+	// Long replaces values (> 64 bytes) do not fail /auth/password/start with 400.
+	longWeb := signIn("web", "Browser 4", "dev_"+strings.Repeat("x", 65))
+	if longWeb["token"] == "" {
+		t.Fatalf("long replaces should still issue a token: %v", longWeb)
 	}
 }

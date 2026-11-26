@@ -5,7 +5,7 @@ import { BASE } from "./base";
 import { storedCredentials } from "./compatibility";
 
 export const passwordSuite = "opaque-ristretto255-sha512-argon2id-v1";
-export interface PasswordState { enabled: boolean; hub_id: string; hub_name: string; suite: string }
+export interface PasswordState { enabled: boolean; hub_id: string; hub_name: string; suite: string; replaces?: boolean }
 interface PakeResponse { session: string; message: string; identity: string; suite: string }
 export interface PasswordCredential { token: string; id: string; hub_id: string }
 export interface NativeLogin { state: string; challenge: string; kind: "phone" | "desktop"; name: string }
@@ -56,25 +56,24 @@ export class PakeClient {
   }
 }
 
-export async function loginWithPassword(password: string, native: NativeLogin | null): Promise<PasswordCredential | { code: string }> {
+export async function loginWithPassword(
+  password: string,
+  native: NativeLogin | null,
+  options: { replaces?: boolean } = {},
+): Promise<PasswordCredential | { code: string }> {
   const client = new PakeClient();
   try {
     const message = await client.call("login-start", { password });
     const hasStorage = typeof localStorage !== "undefined";
-    const replaces = native || !hasStorage ? "" : (storedCredentials().tokenId || unrevokedTokenId());
+    const replaces = native || !hasStorage || options.replaces === false ? "" : (storedCredentials().tokenId || unrevokedTokenId());
     const startBody = {
       message,
       name: native?.name || (typeof navigator !== "undefined" ? deviceName() : t("password.browser")),
       kind: native?.kind || "web",
       challenge: native?.challenge || "",
+      ...(replaces ? { replaces } : {}),
     };
-    const response = replaces
-      ? await passwordApi<PakeResponse>("/start", { ...startBody, replaces }).catch((err) => {
-        // An older hub rejects unknown fields on /auth/password/start: sign in without replacing.
-        if (err instanceof ApiError && err.status === 400) return passwordApi<PakeResponse>("/start", startBody);
-        throw err;
-      })
-      : await passwordApi<PakeResponse>("/start", startBody);
+    const response = await passwordApi<PakeResponse>("/start", startBody);
     if (response.suite !== passwordSuite) throw new Error(t("password.incompatible_update"));
     const proof = await client.call("login-finish", { message: response.message, identity: response.identity });
     const result = await passwordApi<PasswordCredential | { code: string }>("/finish", { session: response.session, message: proof });
